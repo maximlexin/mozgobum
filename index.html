@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Мозгобум — 7 класс</title>
+  <meta name="description" content="Тренажёр школьной программы 7 класса в формате игры: уровни, серии дней, работа над ошибками.">
+  <meta name="theme-color" content="#7c4dff">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- общие градиенты: не внутри скрытых элементов, иначе браузер их не рисует -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <radialGradient id="mb-purple" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="#b9a0ff"/><stop offset="0.6" stop-color="#8b5cf6"/><stop offset="1" stop-color="#6a3ae0"/></radialGradient>
+      <radialGradient id="mb-mint" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="#a7f3e0"/><stop offset="0.6" stop-color="#2dd4bf"/><stop offset="1" stop-color="#0f9f8a"/></radialGradient>
+      <radialGradient id="mb-fire" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="#ffd166"/><stop offset="0.55" stop-color="#ff7b29"/><stop offset="1" stop-color="#e03131"/></radialGradient>
+      <radialGradient id="mb-ice" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="#e7f5ff"/><stop offset="0.6" stop-color="#74c0fc"/><stop offset="1" stop-color="#339af0"/></radialGradient>
+      <radialGradient id="mb-gold" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="#fff3bf"/><stop offset="0.55" stop-color="#fcc419"/><stop offset="1" stop-color="#e09f00"/></radialGradient>
+      <linearGradient id="lxLens" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4dabf7"/><stop offset="1" stop-color="#7048e8"/></linearGradient>
+      <radialGradient id="mb-galaxy" cx="0.35" cy="0.3" r="0.85"><stop offset="0" stop-color="#7b5cff"/><stop offset="0.5" stop-color="#3b1d9a"/><stop offset="1" stop-color="#120a3a"/></radialGradient>
+    </defs>
+  </svg>
+  <div id="app"></div>
+  <canvas id="confetti"></canvas>
+  <div id="toast-layer"></div>
+
+  <script src="js/util.js"></script>
+  <script src="js/content-math.js"></script>
+  <script src="js/content-russian.js"></script>
+  <script src="js/content-physics.js"></script>
+  <script src="js/mascot.js"></script>
+  <script src="js/sound.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

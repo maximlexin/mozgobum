@@ -24,6 +24,7 @@
     play: { day: '', ms: 0, opened: [] },                 // минуты игры сегодня и открытые сундуки
     theoryRead: [],                                       // темы, где открывали теорию
     tests: {},                                            // результаты тестов: { 'предмет:тема': {best, last, count} }
+    remind: { on: true, hour: 19 },                       // напоминания в Android-приложении
   });
 
   function load() {
@@ -267,6 +268,103 @@
     quest('fix', 1);
   }
   const dueMistakes = () => S.mistakes.filter(m => m.due <= Date.now());
+
+  // ---------- Напоминания (только в Android-приложении на Capacitor) ----------
+  const isApp = () => !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  const REMIND_IDS = [1, 2, 3, 4, 5, 6, 7];
+  // Тексты уведомлений: {s} — серия, {m} — число ошибок, {name} — имя игрока.
+  const NOTIFY = {
+    titles: ['Мозгобум', 'Бум на связи 📞', 'Срочно от Бума', 'Бум', 'Мозгобум 🧠', 'Тук-тук, это Бум'],
+    risk: [
+      '🔥 Серия {s} сгорит в полночь. Бум уже плачет',
+      'Твоя серия {s} висит на волоске. Один урок — и она спасена 🔥',
+      'Эй, {name}! Серия {s} сама себя не продлит 😤',
+      'Бум достал огнетушитель… для твоей серии. Не дай ей погаснуть! 🧯',
+      'В полночь серия {s} превратится в 0. Это очень грустная математика 📉',
+      'Неужели {s} огня закончатся вот так? Бум не переживёт 😭',
+      'Тревога! Серия {s} в опасности! Нужен герой. Ты подходишь 🦸',
+      'Пять минут сейчас или ноль дней завтра. Выбор за тобой 🔥',
+    ],
+    next: [
+      'Вчера было круто. Сегодня будет {s} подряд! 🔥',
+      'Серия растёт как на дрожжах. Будет {s}! (это была биология) 🍞',
+      '{s} подряд — звучит как рекорд. Забирай! 🏆',
+      'Ты в ударе! Сделай {s} — Бум уже готовит конфетти 🎉',
+    ],
+    mistakes: [
+      '🎯 {m} ошибок ждут реванша. Покажи им!',
+      'Ошибки сами себя не исправят. А ты — исправишь 🛠️',
+      'У тебя {m} ошибок в очереди. Бум уже точит карандаш ✏️',
+    ],
+    lazy: [
+      'Бум заметил, что тебя нет. Бум всё видит 👀',
+      'Учебник грустит в рюкзаке. Утешь его одним уроком 📚',
+      '5 минут. Не 50. Пять. ⏱️',
+      'Твой мозг просит прокачки. Бум передаёт привет 🧠',
+      'Даже ленивец сегодня позанимался. Ленивец! 🦥',
+      'Контрольная сама себя не напишет. А с Бумом напишешь на 5 ✍️',
+      'Бум съел твою домашку. Шучу. Но урок пройти всё равно надо 🍽️',
+      'Пора показать, кто тут самый умный 😎',
+      'Знаешь, что делают отличники в это время? Правильно. Проходят урок 🤓',
+      'Привет, это снова Бум. Да, опять. Урок? 🙃',
+      'Сундуки сами себя не откроют 🎁',
+      'Задания дня скучают без тебя 📜',
+      'Один урок = +10 XP. Ноль уроков = грустный Бум 😢',
+      'Минута в TikTok или минута гениальности? 🧠',
+      'Бум выучил новый трюк. Зайди посмотри (это урок) 🎪',
+      'Причастный оборот ждёт тебя. Через запятую 😏',
+      'Физика говорит: тело в покое остаётся в покое. Докажи, что ты не тело 🍎',
+      'Если не сейчас, то когда? Если не ты, то Бум. А Бум не умеет 🤷',
+      'Мозг — это мышца. Пора на тренировку 💪',
+      'Уровень сам себя не пройдёт. Мы проверяли 🔬',
+      '{name}, Бум нарядился ради тебя. Хотя бы загляни 🎩',
+      'Тут новая шляпа в магазине. Просто говорю 👒',
+      'Зелёная кнопка «Начать» скучает по тебе 🟢',
+      'Ты пропускаешь урок, а Бум пропускает тебя 💜',
+    ],
+    miss: [
+      'Это уже серьёзно. Бум скучает 😭',
+      'Бум считает дни без тебя. Пальцев не хватает 🖐️',
+      'Мы не обижаемся. Почти. Возвращайся 🥺',
+      'Бум начал разговаривать с учебником. Помоги 📕',
+      'Твой мозг подал заявление об отпуске. Отклони его 🧠',
+      'Я не злюсь, я просто разочарован. Ладно, злюсь. Заходи 😤',
+      'Давно не виделись! Бум сохранил для тебя место 🪑',
+    ],
+  };
+  // Ставим напоминания на 7 дней вперёд; сегодняшнее — только если сегодня ещё не играли.
+  async function scheduleReminders() {
+    const ln = isApp() && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+    if (!ln) return;
+    try {
+      await ln.cancel({ notifications: REMIND_IDS.map(id => ({ id })) });
+      if (!S.remind.on) return;
+      let perm = await ln.checkPermissions();
+      if (perm.display !== 'granted') perm = await ln.requestPermissions();
+      if (perm.display !== 'granted') return;
+      const played = S.lastDay === today(), list = [];
+      // каждую группу перемешиваем один раз и раздаём по дням — за неделю тексты не повторяются
+      const lazy = shuffle(NOTIFY.lazy), miss = shuffle(NOTIFY.miss);
+      for (let d = 0; d < 7; d++) {
+        const at = new Date();
+        at.setDate(at.getDate() + d);
+        at.setHours(S.remind.hour, 0, 0, 0);
+        if (at.getTime() <= Date.now() || (d === 0 && played)) continue;
+        let pool = lazy.slice(d, d + 1);
+        if (d === 0 && S.streak) pool = NOTIFY.risk;
+        else if (d === 1 && played && S.streak) pool = NOTIFY.next;
+        else if (d >= 3) pool = [miss[(d - 3) % miss.length]];  // давно не заходил — Бум переживает
+        else if (d === 0 && dueMistakes().length >= 3) pool = NOTIFY.mistakes;
+        const s = d === 1 && played ? S.streak + 1 : S.streak;
+        const body = pick(pool)
+          .replace('{s}', `${s} ${plural(s, ['день', 'дня', 'дней'])}`)
+          .replace('{m}', dueMistakes().length)
+          .replace('{name}', S.name || 'друг');
+        list.push({ id: REMIND_IDS[d], title: pick(NOTIFY.titles), body, schedule: { at, allowWhileIdle: true } });
+      }
+      if (list.length) await ln.schedule({ notifications: list });
+    } catch (e) { /* без уведомлений игра работает как обычно */ }
+  }
 
   // ---------- Бустеры ----------
   const BOOSTS = {
@@ -829,6 +927,7 @@
     const streakUp = bumpStreak();
     const fresh = checkAchievements();
     save();
+    scheduleReminders();
     L.result = { xp, gems, perfect, streakUp, goalJust: before < S.goal && before + xp >= S.goal, fresh, doubled,
       chestNew: chestsReady().length > L.chestsBefore,
       acc: Math.round(L.correct / Math.max(1, L.correct + L.wrong) * 100), time: Math.round((Date.now() - L.start) / 1000) };
@@ -1081,6 +1180,9 @@
       <div class="card settings">
         <div class="set-row"><span>Цель дня</span><div class="seg">${[[10, 'Легко'], [20, 'Норм'], [30, 'Серьёзно'], [50, 'Жёстко']].map(([g, t]) => `<button class="${S.goal === g ? 'on' : ''}" data-act="goal" data-g="${g}">${t}<small>${g} XP</small></button>`).join('')}</div></div>
         <div class="set-row"><span>Звук</span><button class="toggle ${S.sound ? 'on' : ''}" data-act="sound" aria-label="Звук"><i></i></button></div>
+        ${isApp() ? `<div class="set-row"><span>Напоминания</span><button class="toggle ${S.remind.on ? 'on' : ''}" data-act="remind" aria-label="Напоминания"><i></i></button></div>
+        ${S.remind.on ? `<div class="set-row"><span>Во сколько напоминать</span><div class="seg">${[17, 18, 19, 20, 21].map(h => `<button class="${S.remind.hour === h ? 'on' : ''}" data-act="remind-hour" data-h="${h}">${h}:00</button>`).join('')}</div></div>` : ''}`
+        : `<div class="set-row"><span>Приложение для Android<small class="muted" style="display:block">с напоминаниями о серии</small></span><a class="btn small" href="https://github.com/maximlexin/mozgobum/releases/latest/download/mozgobum.apk">📱 Скачать</a></div>`}
         <div class="set-row"><span>Имя</span><button class="btn small ghost" data-act="rename">${esc(S.name || 'Игрок')} ✏️</button></div>
         <div class="set-row col"><span>Перенос прогресса на другое устройство</span>
           <small class="muted">Входа нет, поэтому прогресс живёт в этом браузере. Скопируй код здесь и вставь на телефоне (или наоборот).</small>
@@ -1328,6 +1430,8 @@
       save(); render();
     },
     sound: () => { S.sound = !S.sound; save(); render(); MB.sound.play('tap'); },
+    remind: () => { S.remind.on = !S.remind.on; save(); render(); scheduleReminders(); toast(S.remind.on ? '🔔 Напоминания включены' : '🔕 Напоминания выключены'); },
+    'remind-hour': el => { S.remind.hour = Number(el.dataset.h); save(); render(); scheduleReminders(); },
     rename: () => { const n = prompt('Как тебя зовут?', S.name); if (n !== null) { S.name = n.trim().slice(0, 20); save(); render(); } },
     export: async () => {
       const code = btoa(unescape(encodeURIComponent(JSON.stringify(S))));
@@ -1348,7 +1452,7 @@
     reset: () => { if (confirm('Точно стереть весь прогресс? Это нельзя отменить.')) { localStorage.removeItem(KEY); S = defaults(); onboardStep = 0; view = 'learn'; render(); } },
     'ob-next': () => { S.name = ($('#nameInp').value || '').trim().slice(0, 20); onboardStep = 1; render(); },
     'ob-goal': el => { S.goal = Number(el.dataset.g); render(); MB.sound.play('tap'); },
-    'ob-done': () => { S.onboarded = true; S.quests.day = ''; ensureQuests(); save(); MB.sound.play('finish'); confetti(); render(); },
+    'ob-done': () => { S.onboarded = true; S.quests.day = ''; ensureQuests(); save(); MB.sound.play('finish'); confetti(); render(); scheduleReminders(); },
   };
 
   document.addEventListener('click', e => {
@@ -1416,6 +1520,7 @@
   ensureQuests();
   save();
   render();
+  if (S.onboarded) scheduleReminders();
   setInterval(() => {
     const before = S.hearts;
     syncHearts();

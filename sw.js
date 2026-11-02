@@ -1,5 +1,5 @@
 // Офлайн-кэш. При изменении файлов игры поднимай VERSION, чтобы телефоны получили обновление.
-const VERSION = 'mozgobum-v5';
+const VERSION = 'mozgobum-v6';
 const FILES = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/util.js', 'js/content-math.js', 'js/content-geometry.js','js/content-russian.js', 'js/content-physics.js', 'js/content-biology.js','js/mascot.js', 'js/sound.js', 'js/app.js',

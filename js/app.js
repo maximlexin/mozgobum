@@ -23,6 +23,7 @@
     boost: { shield: 1, fifty: 2, x2: 1, x2Until: 0 },   // стартовый набор бустеров
     play: { day: '', ms: 0, opened: [] },                 // минуты игры сегодня и открытые сундуки
     theoryRead: [],                                       // темы, где открывали теорию
+    tests: {},                                            // результаты тестов: { 'предмет:тема': {best, last, count} }
   });
 
   function load() {
@@ -369,7 +370,7 @@
 
   // ---------- Шапка и меню ----------
   const NAV = [
-    ['learn', '🏠', 'Учиться'], ['review', '🎯', 'Ошибки'], ['quests', '📜', 'Задания'], ['shop', '🛒', 'Магазин'], ['profile', '😎', 'Профиль'],
+    ['learn', '🏠', 'Учиться'], ['tests', '📋', 'Тесты'], ['review', '🎯', 'Ошибки'], ['quests', '📜', 'Задания'], ['shop', '🛒', 'Магазин'], ['profile', '😎', 'Профиль'],
   ];
   function badge(id) {
     if (id === 'review') { const n = dueMistakes().length; return n ? `<span class="badge">${n}</span>` : ''; }
@@ -543,9 +544,9 @@
     const titles = { choice: 'Выбери ответ', input: 'Впиши ответ', match: 'Найди пары', order: 'Расставь по порядку',
       tf: 'Верно или нет?', find: q.lines ? 'Найди ошибку в решении' : 'Найди ошибку', sort: 'Разложи по группам', commas: 'Расставь запятые' };
     const side = L.mode === 'review' ? '<div class="lhearts review-tag">🎯</div>'
-      : L.mode === 'exam' ? `<div class="lhearts exam-tag">📝 <b>${Math.min(L.idx + 1, L.total)}/${L.total}</b></div>`
+      : L.mode === 'exam' || L.mode === 'test' ? `<div class="lhearts exam-tag">${L.mode === 'test' ? '📋' : '📝'} <b>${Math.min(L.idx + 1, L.total)}/${L.total}</b></div>`
       : `<div class="lhearts">❤️ <b>${S.hearts}</b></div>`;
-    const label = L.mode === 'review' ? '🎯 Работа над ошибками · ' : L.mode === 'exam' ? (L.entry.final ? '🏆 Итоговый экзамен · ' : '👑 Экзамен · ') : '';
+    const label = L.mode === 'review' ? '🎯 Работа над ошибками · ' : L.mode === 'test' ? '📋 Тест · ' : L.mode === 'exam' ? (L.entry.final ? '🏆 Итоговый экзамен · ' : '👑 Экзамен · ') : '';
     return `<div class="lesson ${L.mode}">
       <div class="lesson-top">
         <button class="icon-btn" data-act="quit" aria-label="Выйти">✕</button>
@@ -556,7 +557,7 @@
       <div class="boost-chips">${boostChips()}</div>
       <div class="combo-slot">${L.combo >= 3 ? `<div class="combo-badge">🔥 ${L.combo} подряд!</div>` : ''}</div>
       <div class="qcard" key="${L.idx}">
-        <div class="qtype">${label}${titles[q.type]}</div>
+        <div class="qtype">${label}${q.title || titles[q.type]}</div>
         <div class="q-head"><div class="q-mascot">${MB.mascot('happy', S.look)}</div><h2 class="qtext">${q.q}</h2></div>
         <div class="qbody">${bodyHtml(q)}</div>
       </div>
@@ -626,7 +627,7 @@
     if (L.state === 'answer') {
       if (q.type === 'match') return '<div class="foot-inner"><span class="foot-hint">Нажми на слово слева, потом на пару справа</span></div>';
       if (q.type === 'choice' || q.type === 'tf') return '<div class="foot-inner"><span class="foot-hint">Нажми на правильный ответ</span></div>';
-      if (q.type === 'find') return `<div class="foot-inner"><span class="foot-hint">Нажми на ${q.lines ? 'строку' : 'слово'} с ошибкой</span></div>`;
+      if (q.type === 'find') return `<div class="foot-inner"><span class="foot-hint">${q.title ? 'Нажми на лишнее' : `Нажми на ${q.lines ? 'строку' : 'слово'} с ошибкой`}</span></div>`;
       return `<div class="foot-inner"><button class="btn big" id="checkBtn" data-act="check" ${canCheck(q) ? '' : 'disabled'}>Проверить</button></div>`;
     }
     const ok = L.lastOk;
@@ -666,12 +667,25 @@
     else if (q.type === 'find') ok = Number(L.sel) === q.a;
     else if (q.type === 'sort') ok = q.items.every((it, i) => L.sort.place[i] === it[1]);
     else if (q.type === 'commas') ok = L.commas.slice().sort((a, b) => a - b).join() === q.a.slice().sort((a, b) => a - b).join();
+    if (L.mode === 'test') L.given = givenText(q);
     answer(ok);
   }
   function answer(ok) {
     const q = L.queue[L.idx];
     L.state = 'feedback';
     L.lastOk = ok;
+    // тест: без подсказок и реакции, ответ записываем для разбора и сразу дальше
+    if (L.mode === 'test') {
+      L.log.push({ q, ok, given: L.given || '' });
+      L.given = '';
+      if (ok) { L.correct++; S.correctTotal++; quest('correct', 1); } else { L.wrong++; addMistake(q, L.subj); }
+      L.done++;
+      save();
+      MB.sound.play('tap');
+      const cur = L;
+      L.timer = setTimeout(() => { if (L === cur && L.state === 'feedback') next(); }, 200);
+      return;
+    }
     const exam = L.mode === 'exam';
     if (ok) {
       L.combo++; L.correct++; L.done++;
@@ -756,9 +770,18 @@
     if (L.mode === 'review') {
       xp = 5 + L.correct; gems = 3;
       S.hearts = Math.min(MAX_HEARTS, S.hearts + 1);
+    } else if (L.mode === 'test') {
+      const pct = L.correct / Math.max(1, L.total), grade = gradeOf(pct);
+      Object.assign(L, { grade, pct: Math.round(pct * 100) });
+      xp = L.correct; gems = grade === 5 ? 10 : grade === 4 ? 5 : 0;
+      const old = S.tests[L.testKey] || { best: 0, count: 0 };
+      S.tests[L.testKey] = { best: Math.max(old.best, grade), last: grade, count: old.count + 1 };
+      if (perfect) { S.perfect++; quest('perfect', 1); }
+      S.subjPlayed[L.subj] = true;
+      quest('lessons', 1); quest('subj:' + L.subj, 1);
     } else if (L.mode === 'exam') {
       const pct = L.correct / Math.max(1, L.total);
-      const grade = pct >= 0.9 ? 5 : pct >= EXAM_PASS ? 4 : pct >= 0.5 ? 3 : 2;
+      const grade = gradeOf(pct);
       const passed = grade >= 4, big = L.entry.final;
       Object.assign(L, { grade, passed, pct: Math.round(pct * 100) });
       xp = passed ? (big ? 50 : 20) + (grade === 5 ? 10 : 0) : 5;
@@ -809,7 +832,7 @@
     L.result = { xp, gems, perfect, streakUp, goalJust: before < S.goal && before + xp >= S.goal, fresh, doubled,
       chestNew: chestsReady().length > L.chestsBefore,
       acc: Math.round(L.correct / Math.max(1, L.correct + L.wrong) * 100), time: Math.round((Date.now() - L.start) / 1000) };
-    if (L.mode === 'exam' && !L.passed) { MB.sound.play('fail'); go('result'); return; }
+    if ((L.mode === 'exam' && !L.passed) || (L.mode === 'test' && L.grade === 2)) { MB.sound.play('fail'); go('result'); return; }
     MB.sound.play('finish');
     go('result');
     confetti();
@@ -818,15 +841,18 @@
   // ---------- Экраны после урока ----------
   function resultView() {
     const r = L.result, mm = Math.floor(r.time / 60), ss = String(r.time % 60).padStart(2, '0');
-    const exam = L.mode === 'exam';
+    const exam = L.mode === 'exam', test = L.mode === 'test';
+    const sad = (exam && !L.passed) || (test && L.grade === 2);
     const title = exam ? (L.passed ? (L.entry.final ? 'Итоговый экзамен сдан!' : 'Экзамен сдан!') : 'Экзамен не сдан')
-      : L.mode === 'review' ? 'Ошибки повторены!' : r.perfect ? 'Идеально!' : 'Урок пройден!';
-    const gradeWord = { 5: 'Отлично', 4: 'Хорошо', 3: 'Удовлетворительно', 2: 'Неудовлетворительно' };
-    return `<div class="full-screen result ${exam && !L.passed ? 'failed' : ''}">
-      <div class="big-mascot ${exam && !L.passed ? '' : 'jump'}">${MB.mascot(exam && !L.passed ? 'sad' : r.perfect ? 'wow' : 'happy', S.look)}</div>
+      : test ? 'Тест завершён' : L.mode === 'review' ? 'Ошибки повторены!' : r.perfect ? 'Идеально!' : 'Урок пройден!';
+    const note = exam
+      ? (L.passed ? (L.jump ? 'Все уровни до экзамена засчитаны — вперёд!' : 'Тема закрыта!') : `Нужно ${Math.round(EXAM_PASS * 100)}%. Повтори уроки темы и пересдай — ошибки уже ждут в «Работе над ошибками».`)
+      : `${esc(L.testTitle || '')}${L.wrong ? '. Ошибки добавлены в «Работу над ошибками».' : ''}`;
+    return `<div class="full-screen result ${sad ? 'failed' : ''}">
+      <div class="big-mascot ${sad ? '' : 'jump'}">${MB.mascot(sad ? 'sad' : r.perfect ? 'wow' : 'happy', S.look)}</div>
       <h1>${title}</h1>
-      ${exam ? `<div class="grade-big g${L.grade}"><b>${L.grade}</b><span>${gradeWord[L.grade]}</span></div>
-        <p>Правильно ${L.correct} из ${L.total} (${L.pct}%). ${L.passed ? (L.jump ? 'Все уровни до экзамена засчитаны — вперёд!' : 'Тема закрыта!') : `Нужно ${Math.round(EXAM_PASS * 100)}%. Повтори уроки темы и пересдай — ошибки уже ждут в «Работе над ошибками».`}</p>` : ''}
+      ${exam || test ? `<div class="grade-big g${L.grade}"><b>${L.grade}</b><span>${GRADE_WORD[L.grade]}</span></div>
+        <p>Правильно ${L.correct} из ${L.total} (${L.pct}%). ${note}</p>` : ''}
       ${L.stars && !exam ? `<div class="stars-big">${[1, 2, 3].map(i => `<span class="${i <= L.stars ? 'on' : ''}" style="animation-delay:${i * 0.18}s">★</span>`).join('')}</div>` : ''}
       <div class="tiles">
         <div class="rtile t-xp"><span>Опыт</span><b data-count="${r.xp}">+0</b></div>
@@ -837,7 +863,9 @@
       ${r.doubled ? '<div class="ach-pop x2">⚡ Двойной опыт сработал!</div>' : ''}
       ${r.chestNew ? '<div class="ach-pop chest">🎁 Ты наиграл на сундук! Открой его на карте</div>' : ''}
       ${r.fresh.map(a => `<div class="ach-pop">${a.icon} Достижение: <b>${a.title}</b> · +10 💎</div>`).join('')}
-      <button class="btn big" data-act="res-continue">Продолжить</button>
+      ${test ? `<button class="btn big blue" data-act="tretry">🔄 Решить ещё раз</button>` : ''}
+      <button class="btn big" data-act="res-continue">${test ? 'К тестам' : 'Продолжить'}</button>
+      ${test ? `<div class="test-review-wrap">${testReview()}</div>` : ''}
     </div>`;
   }
   function streakView() {
@@ -869,6 +897,64 @@
       <button class="btn big blue" data-act="buy" data-item="hearts" ${S.gems >= 50 ? '' : 'disabled'}>Восстановить за 50 💎</button>
       <button class="btn big ghost" data-act="nav" data-v="learn">На карту</button>
     </div>`;
+  }
+
+  // ---------- Тесты (как контрольная: без подсказок, разбор в конце) ----------
+  let testSubj = null, testLen = 10;
+  const GRADE_WORD = { 5: 'Отлично', 4: 'Хорошо', 3: 'Удовлетворительно', 2: 'Неудовлетворительно' };
+  const gradeOf = pct => pct >= 0.9 ? 5 : pct >= EXAM_PASS ? 4 : pct >= 0.5 ? 3 : 2;
+
+  function testsView() {
+    const subj = subjById(testSubj || S.subject);
+    const card = (uid, title, desc, icon) => {
+      const r = S.tests[`${subj.id}:${uid}`];
+      return `<div class="card test-card" style="--c:${subj.color};--cd:${subj.dark}">
+        <div class="tc-ico">${icon}</div>
+        <div class="tc-main"><b>${title}</b><small>${desc}</small>
+          <small class="tc-res">${r ? `Лучшая оценка: <span class="grade-inline g${r.best}">${r.best}</span> · решено раз: ${r.count}` : 'Ещё не решал'}</small></div>
+        <button class="btn small" data-act="tstart" data-u="${uid}">Начать</button>
+      </div>`;
+    };
+    return `<h1 class="page-title">Тесты</h1>
+      <p class="muted">Как настоящая контрольная: подсказок и сердец нет, правильные ответы и разбор ошибок — в конце. Оценка от 2 до 5.</p>
+      <div class="subj-tabs">${MB.subjects.map(s => `<button class="subj ${s.id === subj.id ? 'active' : ''}" style="--c:${s.color};--cd:${s.dark}" data-act="tsubj" data-s="${s.id}"><span>${s.icon}</span>${s.title}</button>`).join('')}</div>
+      <div class="set-row test-len"><span>Вопросов в тесте</span><div class="seg">${[10, 20, 30].map(n => `<button class="${testLen === n ? 'on' : ''}" data-act="tlen" data-n="${n}">${n}</button>`).join('')}</div></div>
+      <div class="tests">
+        ${card('all', 'Вся программа', `Задания из всех тем: ${subj.title.toLowerCase()}`, '🏆')}
+        ${subj.units.map((u, i) => card(u.id, `Тема ${i + 1}. ${u.title}`, u.desc, '📋')).join('')}
+      </div>`;
+  }
+  function startTest(subjId, uid) {
+    const subj = subjById(subjId);
+    const units = uid === 'all' ? subj.units : subj.units.filter(u => u.id === uid);
+    if (!units.length) return;
+    L = newLesson('test', buildQuestions(units.flatMap(u => u.lessons.flatMap(l => l.pool)), testLen));
+    Object.assign(L, { subj: subj.id, testKey: `${subj.id}:${uid}`, testUid: uid,
+      testTitle: uid === 'all' ? `${subj.title}: вся программа` : `${subj.title}: ${units[0].title}`, log: [] });
+    view = 'lesson';
+    render();
+  }
+  // что ответил ученик — для разбора в конце теста
+  function givenText(q) {
+    if (q.type === 'choice') return q.opts[Number(L.sel)];
+    if (q.type === 'input') { const el = $('#ans'); return el ? esc(el.value) : ''; }
+    if (q.type === 'tf') return L.sel === '1' ? 'верно' : 'неверно';
+    if (q.type === 'find') return q.tokens[Number(L.sel)];
+    if (q.type === 'order') return L.ord.map(bi => q._bank[bi]).join(' → ');
+    if (q.type === 'sort') return q.groups.map((g, gi) => `${g}: ${q.items.filter((_, i) => L.sort.place[i] === gi).map(it => it[0]).join(', ')}`).join('; ');
+    if (q.type === 'commas') return q.words.map((w, i) => w + (L.commas.includes(i) ? ',' : '')).join(' ');
+    return '';
+  }
+  function testReview() {
+    const wrong = L.log.filter(x => !x.ok);
+    if (!wrong.length) return '<div class="card review-none">🏆 Ни одной ошибки! Так держать.</div>';
+    return `<h3 class="sec">Разбор ошибок (${wrong.length})</h3>
+      <div class="test-review">${wrong.map(x => `<div class="card tr-item">
+        <div class="tr-q">${x.q.q}</div>
+        <div class="tr-bad">Твой ответ: <b>${x.given || '—'}</b></div>
+        <div class="tr-ok">Правильно: <b>${shownAnswer(x.q)}</b></div>
+        ${x.q.ex ? `<div class="tr-ex">${x.q.ex}</div>` : ''}
+      </div>`).join('')}</div>`;
   }
 
   // ---------- Ошибки ----------
@@ -1048,7 +1134,7 @@
     if (view === 'streak' && L) { app.innerHTML = streakView(); return; }
     if (view === 'fail') { app.innerHTML = failView(); return; }
     if (['lesson', 'result', 'streak'].includes(view)) view = 'learn';
-    const pages = { learn: learnView, review: reviewView, quests: questsView, shop: shopView, profile: profileView };
+    const pages = { learn: learnView, tests: testsView, review: reviewView, quests: questsView, shop: shopView, profile: profileView };
     app.innerHTML = shell((pages[view] || learnView)());
     if (view === 'learn' && !sheet) scrollToCurrent();
   }
@@ -1118,7 +1204,7 @@
     'dev-off': () => { try { localStorage.removeItem(DEV_KEY); } catch (e) { /* нет хранилища */ } render(); toast('Режим разработчика выключен'); },
     quit: () => {
       if (L.mode !== 'review' && !confirm('Выйти из урока? Прогресс этого урока пропадёт.')) return;
-      const back = L.mode === 'review' ? 'review' : 'learn';
+      const back = { review: 'review', test: 'tests' }[L.mode] || 'learn';
       clearTimeout(L.timer);
       L = null; go(back);
     },
@@ -1153,7 +1239,11 @@
       if (L.result.streakUp || L.result.goalJust) { view = 'streak'; render(); MB.sound.play('combo'); }
       else ACT['streak-continue']();
     },
-    'streak-continue': () => { const back = L.mode === 'review' ? 'review' : 'learn'; L = null; scrolledOnce = false; go(back); },
+    'streak-continue': () => { const back = { review: 'review', test: 'tests' }[L.mode] || 'learn'; L = null; scrolledOnce = false; go(back); },
+    tsubj: el => { testSubj = el.dataset.s; render(); MB.sound.play('tap'); },
+    tlen: el => { testLen = Number(el.dataset.n); render(); MB.sound.play('tap'); },
+    tstart: el => startTest(testSubj || S.subject, el.dataset.u),
+    tretry: () => { const { subj, testUid } = L; L = null; startTest(subj, testUid); },
     'review-start': startReview,
     claim: el => {
       const q = S.quests.list[Number(el.dataset.i)];

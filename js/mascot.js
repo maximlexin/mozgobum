@@ -50,6 +50,8 @@ MB.ITEMS = {
   cutlass: { slot: 'hand', title: 'Пиратская сабля', price: 150, svg: '<path d="M100 88 Q124 66 116 30 Q112 62 96 84 Z" fill="#dee2e6" stroke="#adb5bd" stroke-width="1.5"/><path d="M92 86 Q100 80 106 90" stroke="#e0a800" stroke-width="4" fill="none" stroke-linecap="round"/>' },
   saber:   { slot: 'hand', title: 'Световой меч', price: 300, svg: '<path d="M100 84 L122 26" stroke="#4dabf7" stroke-width="10" stroke-linecap="round" opacity=".35"/><path d="M100 84 L122 26" stroke="#e7f5ff" stroke-width="4" stroke-linecap="round"/><path d="M95 98 L101 82" stroke="#495057" stroke-width="7" stroke-linecap="round"/><path d="M96 94 L98 89" stroke="#adb5bd" stroke-width="7"/>' },
   hammer:  { slot: 'hand', title: 'Молот грома', price: 350, svg: '<path d="M98 100 L106 66" stroke="#7a5230" stroke-width="5" stroke-linecap="round"/><rect x="92" y="48" width="30" height="20" rx="3" fill="#868e96" transform="rotate(14 107 58)"/><rect x="92" y="48" width="30" height="5" rx="2" fill="#adb5bd" transform="rotate(14 107 58)"/><path d="M84 40 l6 6 -4 2 6 6" stroke="#ffe066" stroke-width="2" fill="none"/>' },
+  // мем «6-7»: лапки с табличками качаются вверх-вниз; открывается за 7 правильных подряд
+  sixseven: { slot: 'hand', title: 'Жест «6-7»', combo67: true, noPaw: true, svg: '<g class="p67 p67-l"><rect x="2" y="50" width="24" height="26" rx="7" fill="#ff4b9b" stroke="#fff" stroke-width="2"/><text x="14" y="70" font-size="19" font-weight="900" text-anchor="middle" fill="#fff" font-family="Nunito,Arial,sans-serif">6</text><ellipse cx="14" cy="83" rx="9" ry="8" fill="{feet}"/></g><g class="p67 p67-r"><rect x="94" y="50" width="24" height="26" rx="7" fill="#1cb0f6" stroke="#fff" stroke-width="2"/><text x="106" y="70" font-size="19" font-weight="900" text-anchor="middle" fill="#fff" font-family="Nunito,Arial,sans-serif">7</text><ellipse cx="106" cy="83" rx="9" ry="8" fill="{feet}"/></g>' },
   // цвет тела
   purple:  { slot: 'skin', title: 'Фиолетовый', price: 0, grad: 'mb-purple', feet: '#5b2bd6', belly: '#c9b8ff' },
   mint:    { slot: 'skin', title: 'Мятный', price: 150, grad: 'mb-mint', feet: '#0c8f7c', belly: '#c3f7ea' },
@@ -77,8 +79,8 @@ MB.mascot = (mood = 'happy', look = null) => {
   else mouth = '<path d="M47 77 Q60 94 73 77 Z" fill="#1d1340"/><path d="M53 84 Q60 90 67 84 Q60 82 53 84Z" fill="#ff7aa8"/>';
   const brows = mood === 'sad' ? '<path d="M36 44 L52 48 M84 44 L68 48" stroke="#3c1f8a" stroke-width="3" stroke-linecap="round"/>' : '';
   const back = ['hat', 'face', 'neck'].map(s => (item(s) && item(s).back) || '').join('');
-  const paw = item('hand') ? `<ellipse cx="98" cy="90" rx="9" ry="8" fill="${skin.feet}"/>` : '';
-  const front = ['face', 'neck', 'hat', 'hand'].map(s => (item(s) && item(s).svg) || '').join('') + paw;
+  const paw = item('hand') && !item('hand').noPaw ? `<ellipse cx="98" cy="90" rx="9" ry="8" fill="${skin.feet}"/>` : '';
+  const front = (['face', 'neck', 'hat', 'hand'].map(s => (item(s) && item(s).svg) || '').join('') + paw).replace(/\{feet\}/g, skin.feet);
   return `<svg class="mascot mood-${mood}" viewBox="-6 -8 132 132" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     ${back}
     <ellipse cx="60" cy="114" rx="34" ry="5" fill="#000" opacity=".12"/>

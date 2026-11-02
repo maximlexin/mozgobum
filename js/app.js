@@ -663,7 +663,7 @@
       const items = path.filter(e => e.ui === ui);
       const done = items.filter(e => stars(e.key)).length;
       const isFinal = ui === subj.units.length;
-      html += `<section class="unit ${isFinal ? 'final' : ''}" style="--c:${subj.color};--cd:${subj.dark}">
+      html += `<section class="unit ${isFinal ? 'final' : ''}" data-unit-id="${u.id}" data-biome="${MB.scene.biomeFor(ui, isFinal)}" style="--c:${subj.color};--cd:${subj.dark}">
         <div class="unit-head"><div><div class="kicker">${isFinal ? '🎓 Финал' : 'Тема ' + (ui + 1)}</div><h3>${u.title}</h3><p>${u.desc}</p></div><div class="unit-prog">${done}/${items.length}</div></div>
         ${u.theory ? `<button class="theory-cloud ${S.theoryRead.includes(u.id) ? 'read' : ''}" data-act="theory" data-u="${u.id}">
           <span>📖</span>${S.theoryRead.includes(u.id) ? 'Теория' : 'Теория · +5 💎'}</button>` : ''}
@@ -963,6 +963,18 @@
     const lb = $('.lbar > div'); if (lb) lb.style.width = (L.done / L.total * 100) + '%';
     const lh = $('.lhearts b'); if (lh) lh.textContent = heartsLabel();
     const cs = $('.combo-slot'); if (cs) cs.innerHTML = L.combo >= 3 ? `<div class="combo-badge">🔥 ${L.combo} подряд!</div>` : '';
+    // мем «6-7»: на седьмом правильном подряд — особая надпись и жест для Бума
+    if (ok && L.combo === 7) {
+      if (cs) cs.innerHTML = '<div class="combo-badge six7"><span>6</span><span>7</span> SIX SEVEN!</div>';
+      const qm2 = $('.q-mascot');
+      if (qm2) qm2.innerHTML = MB.mascot('wow', { ...S.look, hand: 'sixseven' });
+      if (!S.owned.includes('sixseven')) {
+        S.owned.push('sixseven'); save();
+        T('unlock_sixseven', {});
+        setTimeout(() => toast('🔥 Открыт жест «6-7»! Надень его Буму в гардеробе'), 400);
+      }
+      MB.sound.play('combo');
+    }
     refreshBoosts();
     // автопереход: на правильный ответ быстро, на ошибку — успеть прочитать объяснение
     L.wait = ok ? 1200 : Math.min(9000, 3500 + (q.ex || '').length * 30);
@@ -1295,6 +1307,7 @@
         else if (it.rare) btn = '<span class="rare-note">🎁 только из золотого сундука</span>';
         else if (it.plus) btn = '<span class="rare-note">⭐ подарок за Мозгобум Плюс</span>';
         else if (it.referral) btn = '<span class="rare-note">🤝 за приглашение друга</span>';
+        else if (it.combo67) btn = '<span class="rare-note">🔥 ответь правильно 7 раз подряд</span>';
         else btn = `<button class="btn small gold" data-act="buy" data-item="item:${id}" ${S.gems < it.price ? 'disabled' : ''}>${it.price} 💎</button>`;
         return `<div class="card hat ${worn ? 'worn' : ''} ${it.rare || it.secret ? 'rare' : ''}">${it.secret ? '<span class="rare-tag secret">секрет</span>' : it.rare ? '<span class="rare-tag">редкое</span>' : ''}
           <div class="hat-m">${MB.mascot('happy', preview)}</div><b>${it.title}</b>${btn}</div>`;
@@ -1445,6 +1458,7 @@
     if (['lesson', 'result', 'streak'].includes(view)) view = 'learn';
     const pages = { learn: learnView, tests: testsView, review: reviewView, quests: questsView, shop: shopView, profile: profileView };
     app.innerHTML = shell((pages[view] || learnView)());
+    if (view === 'learn') MB.scene.decorate(app);
     if (view === 'learn' && !sheet) scrollToCurrent();
   }
   let scrolledOnce = false;
@@ -1571,7 +1585,7 @@
       else if (item === 'freeze' && S.gems >= 100 && S.freezes < 2) { S.gems -= 100; S.freezes++; toast('🧊 Заморозка куплена'); }
       else if (item.startsWith('item:')) {
         const id = item.slice(5), it = MB.ITEMS[id];
-        if (!it || it.rare || it.secret || it.plus || it.referral || S.owned.includes(id) || S.gems < it.price) return;
+        if (!it || it.rare || it.secret || it.plus || it.referral || it.combo67 || S.owned.includes(id) || S.gems < it.price) return;
         S.gems -= it.price; S.owned.push(id); S.look[it.slot] = id;
         toast(`Бум примерил: ${it.title}!`); confetti(50);
       } else if (item.startsWith('boost:')) {
@@ -1865,6 +1879,12 @@
     cloudRestore();
   }
   startCloud();
+  // пейзажи рассчитаны под ширину экрана — при повороте телефона или изменении окна перерисовываем
+  let resizeTimer = null;
+  addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { if (view === 'learn') MB.scene.decorate(app); }, 200);
+  });
   document.addEventListener('visibilitychange', () => {
     // вернулись из браузера после оплаты (в Android-приложении) — проверяем платёж
     if (document.visibilityState === 'visible' && MB.cloud.on() && MB.cloud.hasPending()) checkPayment(false);

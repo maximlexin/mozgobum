@@ -1,5 +1,5 @@
 ﻿// Офлайн-кэш. При изменении файлов игры поднимай VERSION, чтобы телефоны получили обновление.
-const VERSION = 'mozgobum-v10';
+const VERSION = 'mozgobum-v11';
 const FILES = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/util.js', 'js/config.js', 'js/cloud.js', 'js/content-math.js', 'js/content-geometry.js', 'js/content-russian.js',
@@ -18,8 +18,9 @@ self.addEventListener('activate', e => {
 // Запросы к серверу (Supabase, ЮKassa) не трогаем: их нельзя отдавать из кэша.
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
+  // cache: 'no-cache' — всегда сверяемся с сервером, а не берём старый файл из кэша браузера
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request.url, { cache: 'no-cache', credentials: 'same-origin' })
       .then(res => {
         if (res.ok) {
           const copy = res.clone();

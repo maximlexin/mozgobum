@@ -1141,6 +1141,9 @@
   const GRADE_WORD = { 5: 'Отлично', 4: 'Хорошо', 3: 'Удовлетворительно', 2: 'Неудовлетворительно' };
   const gradeOf = pct => pct >= 0.9 ? 5 : pct >= EXAM_PASS ? 4 : pct >= 0.5 ? 3 : 2;
 
+  // все задания «собери определение / формулу» предмета — для теста-диктанта
+  const dictPool = subj => subj.units.flatMap(u => u.lessons.flatMap(l => l.pool))
+    .filter(q => typeof q === 'object' && (q.type === 'dictation' || q.type === 'formula'));
   function testsView() {
     const subj = subjById(testSubj || S.subject);
     const card = (uid, title, desc, icon) => {
@@ -1158,17 +1161,20 @@
       <div class="set-row test-len"><span>Вопросов в тесте</span><div class="seg">${[10, 20, 30].map(n => `<button class="${testLen === n ? 'on' : ''}" data-act="tlen" data-n="${n}">${n}</button>`).join('')}</div></div>
       <div class="tests">
         ${card('all', 'Вся программа', `Задания из всех тем: ${subj.title.toLowerCase()}`, '🏆')}
+        ${dictPool(subj).length >= 5 ? card('dict', subj.id === 'phys' ? 'Физический диктант' : 'Диктант: определения',
+          `Собери определения${dictPool(subj).some(q => q.type === 'formula') ? ' и формулы' : ''} по всем темам (${dictPool(subj).length} заданий)`, '✍️') : ''}
         ${subj.units.map((u, i) => card(u.id, `Тема ${i + 1}. ${u.title}`, u.desc, '📋')).join('')}
       </div>`;
   }
   function startTest(subjId, uid) {
     const subj = subjById(subjId);
-    const units = uid === 'all' ? subj.units : subj.units.filter(u => u.id === uid);
+    const units = uid === 'all' || uid === 'dict' ? subj.units : subj.units.filter(u => u.id === uid);
     if (!units.length) return;
-    L = newLesson('test', buildQuestions(units.flatMap(u => u.lessons.flatMap(l => l.pool)), testLen));
+    const pool = uid === 'dict' ? dictPool(subj) : units.flatMap(u => u.lessons.flatMap(l => l.pool));
+    L = newLesson('test', buildQuestions(pool, Math.min(testLen, pool.length)));
     T('lesson_start', { mode: 'test', key: `${subj.id}:${uid}`, subj: subj.id, size: testLen });
     Object.assign(L, { subj: subj.id, testKey: `${subj.id}:${uid}`, testUid: uid,
-      testTitle: uid === 'all' ? `${subj.title}: вся программа` : `${subj.title}: ${units[0].title}`, log: [] });
+      testTitle: uid === 'all' ? `${subj.title}: вся программа` : uid === 'dict' ? `${subj.title}: диктант` : `${subj.title}: ${units[0].title}`, log: [] });
     view = 'lesson';
     render();
   }
@@ -1377,7 +1383,7 @@
           <div class="row-btns"><button class="btn small" data-act="export">Скопировать код</button><button class="btn small ghost" data-act="import">Вставить код</button></div>
           <textarea id="exportBox" class="export" readonly hidden></textarea></div>
         <div class="set-row"><span>Начать заново</span><button class="btn small red" data-act="reset">Сбросить прогресс</button></div>
-        <div class="set-row"><span>Промокод</span>${S.plusGift ? '<span class="plus-left">⭐ Плюс навсегда</span>' : '<button class="btn small ghost" data-act="promo">Ввести код</button>'}</div>
+        <div class="set-row"><span>Промокод${S.plusGift ? '<small class="muted" style="display:block">⭐ Плюс навсегда</small>' : ''}</span><button class="btn small ghost" data-act="promo">Ввести код</button></div>
         ${MB.CONFIG.features.legal ? `<div class="set-row"><span>Документы</span><a class="btn small ghost" href="docs/" target="_blank" rel="noopener">Соглашение и политика</a></div>
         <div class="set-row col"><span>Номер учётной записи</span>
           <small class="muted">Укажи его в письме, если хочешь удалить данные с сервера или вернуть платёж.</small>
@@ -1442,7 +1448,11 @@
     else if (stats.loading && !d) body = '<div class="card st-empty">Загружаем…</div>';
     else if (stats.error && !d) body = `<div class="card st-empty"><b>${esc(stats.error)}</b><div class="row-btns"><button class="btn small" data-act="stats-reload">Ещё раз</button><button class="btn small ghost" data-act="stats-token">Сменить ключ</button></div></div>`;
     else if (d) {
-      const t = d.totals || {}, f = d.funnel || {}, ret = d.retention || {}, daily = d.daily || [];
+      const t = d.totals || {}, daily = d.daily || [];
+      // воронка приходит списком [{step, players}], удержание — {d1: {rate}, d7: {rate}}
+      const f = Array.isArray(d.funnel) ? Object.fromEntries(d.funnel.map(x => [x.step, x.players])) : (d.funnel || {});
+      const rate = v => (v && typeof v === 'object' ? v.rate : v);
+      const ret = { d1: rate((d.retention || {}).d1), d7: rate((d.retention || {}).d7) };
       const tiles = [['👥', t.players, 'игроков всего'], ['🔥', t.players_7d_active, 'активны за 7 дней'], ['📚', t.lessons_finished, 'уроков пройдено'],
         ['📈', d.avg_lessons_per_active != null ? Number(d.avg_lessons_per_active).toFixed(1) : null, 'уроков на активного'], ['💰', t.revenue, '₽ выручка'],
         ['🧾', t.paid_purchases, 'оплат'], ['🤝', t.referrals, 'приглашений'], ['↩️', ret.d1 != null ? Math.round(ret.d1 * 100) + '%' : null, 'вернулись на 1-й день'],
@@ -1793,6 +1803,11 @@
         const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code));
         hex = [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
       } catch (e) { toast('Промокод можно ввести только на сайте или в приложении'); return; }
+      if ((MB.CONFIG.devHashes || []).includes(hex)) {
+        try { localStorage.setItem(DEV_KEY, '1'); } catch (e) { /* нет хранилища */ }
+        toast('🛠️ Режим разработчика включён'); render();
+        return;
+      }
       if (!(MB.CONFIG.giftHashes || []).includes(hex)) { toast('Такого промокода нет'); return; }
       S.plusGift = true;
       plusPerks(); save();

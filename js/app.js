@@ -980,8 +980,11 @@
     // автопереход: на правильный ответ быстро, на ошибку — успеть прочитать объяснение
     L.wait = ok ? 1200 : Math.min(9000, 3500 + (q.ex || '').length * 30);
     refreshFoot();
+    lockInput();   // двойной клик по «Проверить» не должен сразу нажать «Дальше»
     const cur = L;
-    L.timer = setTimeout(() => { if (L === cur && L.state === 'feedback') next(); }, L.wait);
+    // пока открыто окно (например, «Выйти из урока?») — урок не листаем
+    const tick = () => { if (L !== cur || L.state !== 'feedback') return; if (dialog) { L.timer = setTimeout(tick, 400); return; } next(); };
+    L.timer = setTimeout(tick, L.wait);
   }
   function next() {
     if (!L || L.state !== 'feedback') return;
@@ -1524,9 +1527,14 @@
   }
 
   // ---------- Отрисовка ----------
+  let lastView = null, lastQuestion = null;
   function render() {
     MB.sound.enabled = S.sound;
     document.body.className = 'v-' + view;
+    // сменился экран или вопрос урока — коротко блокируем клики (защита от двойного нажатия)
+    const qKey = view === 'lesson' && L ? L.idx : null;
+    if (view !== lastView || qKey !== lastQuestion) lockInput();
+    lastView = view; lastQuestion = qKey;
     if (!S.onboarded) { document.body.className = 'v-onboard'; app.innerHTML = onboardView(); return; }
     if (!S.consent && MB.CONFIG.features.legal) { document.body.className = 'v-onboard'; app.innerHTML = consentView(); return; }
     if (view === 'lesson' && L) { app.innerHTML = lessonView(); return; }
@@ -1850,6 +1858,7 @@
   document.addEventListener('click', e => {
     const el = e.target.closest('[data-act]');
     if (!el || el.disabled) return;
+    if (performance.now() < inputLockUntil) return;   // экран только что сменился
     const fn = ACT[el.dataset.act];
     if (fn) fn(el, e);
   });
@@ -1860,8 +1869,8 @@
     if (b) b.disabled = !consentOk();
   });
   document.addEventListener('keydown', e => {
-    if (dialog) {   // открыто наше окно: Enter — ОК, Escape — отмена
-      if (e.key === 'Enter') { e.preventDefault(); closeDialog(true); }
+    if (dialog) {   // открыто наше окно: Enter — ОК (кроме опасных действий вроде выхода), Escape — отмена
+      if (e.key === 'Enter') { e.preventDefault(); if (!dialog.danger) closeDialog(true); }
       if (e.key === 'Escape') closeDialog(false);
       return;
     }
@@ -1915,8 +1924,14 @@
   }
   document.addEventListener('click', e => {
     const b = e.target.closest('[data-dlg]');
-    if (b) { e.stopPropagation(); closeDialog(b.dataset.dlg === '1'); }
+    if (b) { e.stopPropagation(); closeDialog(b.dataset.dlg === '1'); return; }
+    // клик по затемнённому фону = «Отмена» (если отмена есть)
+    if (dialog && e.target.classList.contains('dlg-bg') && dialog.cancel !== false) { e.stopPropagation(); closeDialog(false); }
   }, true);
+  // После смены экрана короткая пауза для кликов: второй клик двойного нажатия
+  // не должен попасть в кнопку, которая появилась на месте нажатой (ответ, «Дальше», карточка уровня)
+  let inputLockUntil = 0;
+  const lockInput = (ms = 350) => { inputLockUntil = performance.now() + ms; };
   const confirmBox = (text, ok = 'Да', danger = false) => ask({ text, ok, danger });
   const promptBox = (title, value = '', placeholder = '', ok = 'Готово') => ask({ title, input: value, placeholder, ok });
   const alertBox = text => ask({ text, ok: 'Понятно', cancel: false });

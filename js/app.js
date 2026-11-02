@@ -25,14 +25,30 @@
     theoryRead: [],                                       // темы, где открывали теорию
     tests: {},                                            // результаты тестов: { 'предмет:тема': {best, last, count} }
     remind: { on: true, hour: 19 },                       // напоминания в Android-приложении
+    plusUntil: 0, plusWeek: '', plusGift: false,          // «Мозгобум Плюс»: до когда, неделя бесплатной заморозки, подарок по промокоду
+    consent: null,                                        // принятые документы: {v, at}
   });
 
+  let brokenSaved = false;   // данные были повреждены — показать предупреждение
   function load() {
+    let raw = null;
+    try { raw = localStorage.getItem(KEY); } catch (e) { return defaults(); /* приватный режим */ }
+    if (!raw) return defaults();
     try {
-      const raw = localStorage.getItem(KEY);
-      if (raw) return migrate(Object.assign(defaults(), JSON.parse(raw)));
-    } catch (e) { /* приватный режим или повреждённые данные */ }
-    return defaults();
+      return migrate(Object.assign(defaults(), JSON.parse(raw)));
+    } catch (e) {
+      // не затираем испорченный прогресс: откладываем копию, чтобы его можно было восстановить вручную
+      try { localStorage.setItem(`${KEY}-broken-${Date.now()}`, raw); brokenSaved = true; } catch (e2) { /* нет места */ }
+      return defaults();
+    }
+  }
+  // проверка кода переноса прогресса: базовые поля должны быть нужного типа
+  function validState(d) {
+    if (!d || typeof d !== 'object' || Array.isArray(d)) return false;
+    const num = ['xp', 'gems', 'hearts', 'streak'], obj = ['progress', 'days', 'look'];
+    return num.every(k => typeof d[k] === 'number' && isFinite(d[k]) && d[k] >= 0)
+      && obj.every(k => d[k] && typeof d[k] === 'object')
+      && Array.isArray(d.owned) && Array.isArray(d.mistakes);
   }
   // первая версия хранила только шапку в S.hat
   function migrate(s) {
@@ -74,10 +90,90 @@
     }
   }
   function loseHeart() {
+    if (isPlus()) return;   // с Плюсом сердца не тратятся
     if (S.hearts >= MAX_HEARTS) S.heartsAt = Date.now();
     S.hearts = Math.max(0, S.hearts - 1);
   }
   const minsToHeart = () => Math.max(1, Math.ceil((S.heartsAt + REGEN_MS - Date.now()) / 60000));
+  const outOfHearts = () => S.hearts <= 0 && !isPlus();
+  const heartsLabel = () => (isPlus() ? '∞' : S.hearts);
+
+  // ---------- Мозгобум Плюс ----------
+  // подарочный Плюс (по промокоду) бессрочный и не зависит от сервера
+  const isPlus = () => !!S.plusGift || (S.plusUntil || 0) > Date.now();
+  const weekKey = () => { const d = new Date(); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return dayKey(d); };
+  // бонусы Плюса: наряд навсегда и одна бесплатная заморозка серии в неделю
+  function plusPerks() {
+    if (!isPlus()) return;
+    if (!S.owned.includes('plusstar')) S.owned.push('plusstar');
+    const wk = weekKey();
+    if (S.plusWeek !== wk) {
+      S.plusWeek = wk;
+      if (S.freezes < 2) { S.freezes++; setTimeout(() => toast('🧊 Плюс: бесплатная заморозка серии на эту неделю'), 1200); }
+    }
+  }
+  function activatePlus(until, test) {
+    const was = isPlus();
+    S.plusUntil = until;
+    plusPerks();
+    save();
+    T('plus_paid', { test: !!test, renew: was });
+    MB.sound.play('finish');
+    confetti();
+    toast(test ? '🧪 Тестовый Плюс подключён (деньги не списаны)' : '⭐ Плюс подключён! Спасибо, что поддерживаешь Мозгобум');
+    render();
+  }
+  // спрашиваем сервер, прошла ли оплата (после возврата со страницы оплаты или из браузера в приложение)
+  async function checkPayment(manual) {
+    const r = await MB.cloud.checkPending();
+    if (!r) { if (manual) toast('Не получилось проверить оплату. Попробуй позже'); return; }
+    if (r.status === 'paid' && r.plus_until) activatePlus(Date.parse(r.plus_until));
+    else if (r.status === 'canceled') { toast('Оплата отменена — деньги не списаны'); render(); }
+    else if (manual) toast('Оплата ещё не прошла. Если ты оплатил, подожди минуту');
+  }
+  // сервер — источник правды о Плюсе (без сети остаётся то, что сохранено на устройстве)
+  async function syncPlus() {
+    const until = await MB.cloud.plusUntil();
+    if (until === null || until === S.plusUntil) return;
+    S.plusUntil = until;
+    plusPerks();
+    save();
+    if (!['lesson', 'result', 'streak'].includes(view)) render();
+  }
+
+  // ---------- Аналитика и облако ----------
+  const T = (name, props) => MB.cloud.track(name, props);
+  let cloudSaveTimer = null;
+  // облачная копия прогресса без имени (имя хранится только на устройстве)
+  function cloudSaveSoon() {
+    if (!MB.cloud.on()) return;
+    clearTimeout(cloudSaveTimer);
+    cloudSaveTimer = setTimeout(() => MB.cloud.pushSave({ ...S, name: '' }), 15000);
+  }
+  async function cloudRestore() {
+    const row = await MB.cloud.pullSave();
+    if (!row || !row.data || !validState(row.data)) return;
+    if ((row.xp | 0) <= S.xp) return;
+    if (await confirmBox(`В облаке найден прогресс: ${row.xp} XP (здесь ${S.xp} XP). Загрузить его?`, 'Загрузить')) {
+      S = migrate(Object.assign(defaults(), row.data, { name: S.name, onboarded: true, consent: S.consent }));
+      save(); toast('☁️ Прогресс загружен из облака'); render();
+    }
+  }
+  // награды с сервера: за приглашения друзей
+  async function applyRewards() {
+    const list = await MB.cloud.fetchRewards();
+    if (!list.length) return;
+    for (const r of list) {
+      if (r.kind === 'gems') S.gems += r.amount | 0;
+      if (r.kind === 'boost' && S.boost[r.value] !== undefined) S.boost[r.value] += r.amount | 0 || 1;
+      if (r.kind === 'item' && MB.ITEMS[r.value] && !S.owned.includes(r.value)) S.owned.push(r.value);
+    }
+    save();
+    const gems = list.filter(r => r.kind === 'gems').reduce((s, r) => s + (r.amount | 0), 0);
+    toast(`🎁 Награда за приглашение${gems ? `: +${gems} 💎` : ''}${list.some(r => r.kind === 'item') ? ' и новый наряд' : ''}!`);
+    confetti(80);
+    render();
+  }
 
   // ---------- Серия дней ----------
   function checkStreak() {
@@ -198,9 +294,11 @@
     if (q.type === 'choice') q._order = shuffle(q.opts.map((_, i) => i));
     if (q.type === 'match') { q._left = shuffle(q.pairs.map((_, i) => i)); q._right = shuffle(q.pairs.map((_, i) => i)); }
     if (q.type === 'sort') q._items = shuffle(q.items.map((_, i) => i));
-    if (q.type === 'order') {
-      let bank = shuffle(q.items), guard = 0;
-      while (bank.join('|') === q.items.join('|') && guard++ < 10) bank = shuffle(q.items);
+    if (q.type === 'order' || q.type === 'dictation' || q.type === 'formula') {
+      // в диктанте и формулах можно добавить лишние плитки-ловушки (extra)
+      const tiles = q.items.concat(q.extra || []);
+      let bank = shuffle(tiles), guard = 0;
+      while (bank.join('|') === tiles.join('|') && guard++ < 10) bank = shuffle(tiles);
       q._bank = bank;
     }
     return q;
@@ -235,10 +333,18 @@
     });
   }
   const isNumeric = q => q.type === 'input' && /^-?\d+([.,]\d+)?$/.test(String(Array.isArray(q.a) ? q.a[0] : q.a));
+  // Формулы сравниваем по смыслу записи: порядок множителей и сторон равенства не важен
+  // (F = m·a, F = a·m и m·a = F — одно и то же). Суммы сравниваются как есть — для них есть accept.
+  function normFormula(tokens) {
+    const s = tokens.join('').replace(/\s+/g, '').replace(/[×*]/g, '·').replace(/:/g, '/');
+    const side = t => (/[+−-]/.test(t) ? t : t.split('/').map(part => part.split('·').sort().join('·')).join('/'));
+    return s.split('=').map(side).sort().join('=');
+  }
   const shownAnswer = q => {
     if (q.type === 'choice') return q.opts[q.a];
     if (q.type === 'input') return String(Array.isArray(q.a) ? q.a[0] : q.a).replace('.', ',').replace(/^-/, '−') + (q.unit ? ' ' + q.unit : '');
     if (q.type === 'order') return q.items.join(' → ');
+    if (q.type === 'dictation' || q.type === 'formula') return q.items.join(' ');
     if (q.type === 'tf') return q.a ? 'верно' : 'неверно';
     if (q.type === 'find') return q.fix ? `${q.tokens[q.a]} → ${q.fix}` : q.tokens[q.a];
     if (q.type === 'sort') return q.groups.map((g, gi) => `${g}: ${q.items.filter(it => it[1] === gi).map(it => it[0]).join(', ')}`).join('; ');
@@ -425,6 +531,7 @@
     if (S.play.opened.includes(c.id)) { toast('Этот сундук уже открыт сегодня. Завтра будет новый!'); return; }
     if (playMin() < c.min) { toast(`${c.title} откроется через ${Math.ceil(c.min - playMin())} мин игры`); return; }
     S.play.opened.push(c.id);
+    T('chest_open', { id: c.id });
     const rewards = rollChest(c);
     checkAchievements(); save();
     chestOpen = { chest: c, rewards };
@@ -489,7 +596,8 @@
       <div class="stats">
         <div class="stat streak ${played ? 'on' : ''}" title="Серия дней"><span class="ico">🔥</span><b>${S.streak}</b></div>
         <div class="stat gems" title="Кристаллы"><span class="ico">💎</span><b>${S.gems}</b></div>
-        <div class="stat hearts" title="${S.hearts < MAX_HEARTS ? 'Следующее сердце через ' + minsToHeart() + ' мин' : 'Сердца полные'}"><span class="ico">❤️</span><b>${S.hearts}</b></div>
+        <div class="stat hearts" title="${isPlus() ? 'Плюс: бесконечные сердца' : S.hearts < MAX_HEARTS ? 'Следующее сердце через ' + minsToHeart() + ' мин' : 'Сердца полные'}"><span class="ico">❤️</span><b>${heartsLabel()}</b></div>
+        ${isPlus() ? '<div class="stat plus-badge" title="Мозгобум Плюс">⭐</div>' : ''}
         <div class="stat goal mobile-only" title="Цель дня">${goalRing(30)}</div>
       </div>
     </header>`;
@@ -608,11 +716,12 @@
   // ---------- Урок ----------
   function startLesson(entry, jump = false) {
     syncHearts();
-    if (!entry.boss && S.hearts <= 0) { L = null; go('fail'); return; }
+    if (!entry.boss && outOfHearts()) { L = null; T('hearts_out', { where: 'start' }); go('fail'); return; }
     L = newLesson(entry.boss ? 'exam' : 'lesson', buildQuestions(entry.pool, entry.boss ? entry.size : LESSON_SIZE));
     L.jump = jump;
     L.entry = entry;
     L.subj = S.subject;
+    T('lesson_start', { mode: L.mode, key: entry.key, subj: L.subj, jump: !!jump });
     sheet = null;
     view = 'lesson';
     render();
@@ -622,6 +731,7 @@
     if (!due.length) { toast('Сейчас нечего повторять — молодец! 👌'); return; }
     L = newLesson('review', due.map(m => prep(m.q)));
     L.subj = due[0].subj;
+    T('lesson_start', { mode: 'review', count: due.length });
     view = 'lesson';
     render();
   }
@@ -640,10 +750,11 @@
     const q = L.queue[L.idx];
     const pct = L.done / L.total * 100;
     const titles = { choice: 'Выбери ответ', input: 'Впиши ответ', match: 'Найди пары', order: 'Расставь по порядку',
-      tf: 'Верно или нет?', find: q.lines ? 'Найди ошибку в решении' : 'Найди ошибку', sort: 'Разложи по группам', commas: 'Расставь запятые' };
+      tf: 'Верно или нет?', find: q.lines ? 'Найди ошибку в решении' : 'Найди ошибку', sort: 'Разложи по группам', commas: 'Расставь запятые',
+      dictation: 'Собери определение', formula: 'Собери формулу' };
     const side = L.mode === 'review' ? '<div class="lhearts review-tag">🎯</div>'
       : L.mode === 'exam' || L.mode === 'test' ? `<div class="lhearts exam-tag">${L.mode === 'test' ? '📋' : '📝'} <b>${Math.min(L.idx + 1, L.total)}/${L.total}</b></div>`
-      : `<div class="lhearts">❤️ <b>${S.hearts}</b></div>`;
+      : `<div class="lhearts">❤️ <b>${heartsLabel()}</b></div>`;
     const label = L.mode === 'review' ? '🎯 Работа над ошибками · ' : L.mode === 'test' ? '📋 Тест · ' : L.mode === 'exam' ? (L.entry.final ? '🏆 Итоговый экзамен · ' : '👑 Экзамен · ') : '';
     return `<div class="lesson ${L.mode}">
       <div class="lesson-top">
@@ -707,15 +818,16 @@
         <span class="ohint">Нажимай между словами, чтобы поставить или убрать запятую</span>`;
     }
     // order
-    return `<div class="order">
-      <div class="oans">${L.ord.length ? L.ord.map((bi, k) => `<button class="tile" data-act="oa" data-k="${k}">${q._bank[bi]}</button>`).join('') : '<span class="ohint">Нажимай на карточки снизу по порядку</span>'}</div>
+    const hint = q.type === 'formula' ? 'Собери формулу из символов снизу' : q.type === 'dictation' ? 'Нажимай на слова по порядку' + (q.extra ? ' — есть лишние' : '') : 'Нажимай на карточки снизу по порядку';
+    return `<div class="order ${q.type}">
+      <div class="oans">${L.ord.length ? L.ord.map((bi, k) => `<button class="tile" data-act="oa" data-k="${k}">${q._bank[bi]}</button>`).join('') : `<span class="ohint">${hint}</span>`}</div>
       <div class="obank">${q._bank.map((w, bi) => `<button class="tile ${L.ord.includes(bi) ? 'used' : ''}" data-act="ob" data-i="${bi}">${w}</button>`).join('')}</div>
     </div>`;
   }
   function canCheck(q) {
     if (q.type === 'choice') return L.sel !== null;
     if (q.type === 'input') { const el = $('#ans'); return !!(el && el.value.trim()); }
-    if (q.type === 'order') return L.ord.length === q.items.length;
+    if (q.type === 'order' || q.type === 'dictation' || q.type === 'formula') return L.ord.length === q.items.length;
     if (q.type === 'sort') return Object.keys(L.sort.place).length === q.items.length;
     if (q.type === 'commas') return true;
     if (q.type === 'tf' || q.type === 'find') return L.sel !== null;
@@ -730,7 +842,7 @@
     }
     const ok = L.lastOk;
     const praise = pick(['Отлично!', 'Супер!', 'Точно!', 'Красава!', 'Мощно!', 'Так держать!', 'Огонь!', 'Верно!', 'Гений!']);
-    const out = S.hearts <= 0 && L.mode === 'lesson' && !ok;
+    const out = outOfHearts() && L.mode === 'lesson' && !ok;
     return `<div class="foot-inner fb ${ok ? 'ok' : 'bad'}">
       <div class="fb-body">
         <div class="fb-title">${ok ? '✅ ' + praise : '❌ ' + pick(['Не совсем…', 'Почти!', 'Ошибочка'])}</div>
@@ -761,6 +873,14 @@
     if (q.type === 'choice') ok = Number(L.sel) === q.a;
     else if (q.type === 'input') ok = matchInput($('#ans').value, q.a);
     else if (q.type === 'order') ok = L.ord.every((bi, k) => q._bank[bi] === q.items[k]);
+    else if (q.type === 'dictation') {
+      // принимаем основной порядок слов и допустимые варианты (accept)
+      const got = L.ord.map(bi => q._bank[bi]).join(' ');
+      ok = [q.items].concat(q.accept || []).some(v => v.join(' ') === got);
+    } else if (q.type === 'formula') {
+      const got = normFormula(L.ord.map(bi => q._bank[bi]));
+      ok = [q.items].concat(q.accept || []).some(v => normFormula(v) === got);
+    }
     else if (q.type === 'tf') ok = (L.sel === '1') === q.a;
     else if (q.type === 'find') ok = Number(L.sel) === q.a;
     else if (q.type === 'sort') ok = q.items.every((it, i) => L.sort.place[i] === it[1]);
@@ -797,7 +917,7 @@
       if (L.mode === 'review') reviewHit(q, false);
       else if (exam) { addMistake(q, L.subj); L.done++; }   // на экзамене без сердец и без повтора
       else {
-        if (S.boost.shield > 0) { S.boost.shield--; L.shielded = true; }
+        if (isPlus()) { /* с Плюсом сердце не тратится, щит бережём */ } else if (S.boost.shield > 0) { S.boost.shield--; L.shielded = true; }
         else loseHeart();
         addMistake(q, L.subj);
       }
@@ -817,7 +937,7 @@
       });
     }
     if (q.type === 'input') { const el = $('#ans'); el.disabled = true; el.classList.add(ok ? 'right' : 'wrong'); }
-    if (q.type === 'order') $('.oans').classList.add(ok ? 'right' : 'wrong');
+    if (q.type === 'order' || q.type === 'dictation' || q.type === 'formula') $('.oans').classList.add(ok ? 'right' : 'wrong');
     if (q.type === 'tf') document.querySelectorAll('.tf-btn').forEach(b => {
       b.disabled = true;
       if ((b.dataset.v === '1') === q.a) b.classList.add('right'); else b.classList.add(ok ? 'dim' : 'wrong');
@@ -841,7 +961,7 @@
     const card = $('.qcard');
     if (card) { card.classList.remove('shake', 'pop'); void card.offsetWidth; card.classList.add(ok ? 'pop' : 'shake'); }
     const lb = $('.lbar > div'); if (lb) lb.style.width = (L.done / L.total * 100) + '%';
-    const lh = $('.lhearts b'); if (lh) lh.textContent = S.hearts;
+    const lh = $('.lhearts b'); if (lh) lh.textContent = heartsLabel();
     const cs = $('.combo-slot'); if (cs) cs.innerHTML = L.combo >= 3 ? `<div class="combo-badge">🔥 ${L.combo} подряд!</div>` : '';
     refreshBoosts();
     // автопереход: на правильный ответ быстро, на ошибку — успеть прочитать объяснение
@@ -854,7 +974,7 @@
     if (!L || L.state !== 'feedback') return;
     clearTimeout(L.timer);
     addPlayTime(Math.min(Date.now() - L.qStart, 90000));
-    if (S.hearts <= 0 && L.mode === 'lesson') { MB.sound.play('fail'); L = null; go('fail'); return; }
+    if (outOfHearts() && L.mode === 'lesson') { MB.sound.play('fail'); T('hearts_out', { where: 'lesson' }); L = null; go('fail'); return; }
     L.idx++;
     resetQuestionState();
     if (L.idx >= L.queue.length) { finish(); return; }
@@ -931,6 +1051,11 @@
     L.result = { xp, gems, perfect, streakUp, goalJust: before < S.goal && before + xp >= S.goal, fresh, doubled,
       chestNew: chestsReady().length > L.chestsBefore,
       acc: Math.round(L.correct / Math.max(1, L.correct + L.wrong) * 100), time: Math.round((Date.now() - L.start) / 1000) };
+    T('lesson_finish', { mode: L.mode, key: L.entry ? L.entry.key : (L.testKey || null), subj: L.subj, correct: L.correct, wrong: L.wrong,
+      total: L.total, grade: L.grade || null, passed: L.mode === 'exam' ? !!L.passed : null, stars: L.stars || null, time: L.result.time, streak: S.streak });
+    cloudSaveSoon();
+    // первый пройденный урок открывает награду за приглашение (если пришёл по ссылке друга)
+    if (MB.cloud.hasRef()) MB.cloud.claimReferral().then(st => { if (st) T('referral_claimed', { status: st }); if (st === 'rewarded') applyRewards(); });
     if ((L.mode === 'exam' && !L.passed) || (L.mode === 'test' && L.grade === 2)) { MB.sound.play('fail'); go('result'); return; }
     MB.sound.play('finish');
     go('result');
@@ -1028,6 +1153,7 @@
     const units = uid === 'all' ? subj.units : subj.units.filter(u => u.id === uid);
     if (!units.length) return;
     L = newLesson('test', buildQuestions(units.flatMap(u => u.lessons.flatMap(l => l.pool)), testLen));
+    T('lesson_start', { mode: 'test', key: `${subj.id}:${uid}`, subj: subj.id, size: testLen });
     Object.assign(L, { subj: subj.id, testKey: `${subj.id}:${uid}`, testUid: uid,
       testTitle: uid === 'all' ? `${subj.title}: вся программа` : `${subj.title}: ${units[0].title}`, log: [] });
     view = 'lesson';
@@ -1040,6 +1166,7 @@
     if (q.type === 'tf') return L.sel === '1' ? 'верно' : 'неверно';
     if (q.type === 'find') return q.tokens[Number(L.sel)];
     if (q.type === 'order') return L.ord.map(bi => q._bank[bi]).join(' → ');
+    if (q.type === 'dictation' || q.type === 'formula') return L.ord.map(bi => q._bank[bi]).join(' ');
     if (q.type === 'sort') return q.groups.map((g, gi) => `${g}: ${q.items.filter((_, i) => L.sort.place[i] === gi).map(it => it[0]).join(', ')}`).join('; ');
     if (q.type === 'commas') return q.words.map((w, i) => w + (L.commas.includes(i) ? ',' : '')).join(' ');
     return '';
@@ -1088,13 +1215,33 @@
           ${q.claimed ? '<span class="q-rew">получено</span>' : done ? `<button class="btn small gold" data-act="claim" data-i="${i}">+${q.reward} 💎</button>` : `<span class="q-rew">${q.reward} 💎</span>`}
         </div>`;
       }).join('')}</div>
+      ${inviteCard()}
       <h3 class="sec">Достижения</h3>${achGrid()}`;
   }
   const achGrid = () => `<div class="ach-grid">${ACH.map(a => `<div class="ach ${S.achievements[a.id] ? 'got' : ''}"><div class="a-ico">${a.icon}</div><b>${a.title}</b><small>${a.text}</small></div>`).join('')}</div>`;
 
   // ---------- Магазин ----------
+  function plusCard() {
+    if (!MB.CONFIG.features.plus) return '';
+    const P = MB.CONFIG.plus, left = Math.max(1, Math.ceil(((S.plusUntil || 0) - Date.now()) / DAY));
+    const perks = ['❤️ Бесконечные сердца', '🧊 Бесплатная заморозка серии каждую неделю', '⭐ Звёздная корона для Бума навсегда', '💜 Поддержка Мозгобума'];
+    let btn;
+    if (S.plusGift) btn = '<div class="plus-left">🎁 У тебя подарочный Плюс навсегда</div>';
+    else if (MB.cloud.hasPending()) btn = '<button class="btn big blue" data-act="plus-check">⏳ Проверить оплату</button>';
+    else if (MB.cloud.on()) btn = `<button class="btn big gold" data-act="plus-buy">${isPlus() ? 'Продлить' : 'Подключить'} за ${P.price} ₽ на ${P.days} дней</button>`;
+    else if (isDev()) btn = '<button class="btn big gold" data-act="plus-buy">🧪 Тестовая покупка (DEV)</button>';
+    else btn = '<button class="btn big gray" disabled>Скоро будет доступно</button>';
+    return `<div class="card plus-card ${isPlus() ? 'active' : ''}">
+      <div class="plus-head"><span class="plus-logo">⭐ Мозгобум Плюс</span>${isPlus() && !S.plusGift ? `<span class="plus-left">ещё ${left} ${plural(left, ['день', 'дня', 'дней'])}</span>` : ''}</div>
+      <ul class="plus-perks">${perks.map(p => `<li>${p}</li>`).join('')}</ul>
+      ${btn}
+      <small class="muted">Разовый платёж без автопродления. Учёба бесплатна и без Плюса.
+        <a href="docs/offer.html" target="_blank" rel="noopener">Оферта</a> · <a href="docs/refund.html" target="_blank" rel="noopener">Возврат</a></small>
+    </div>`;
+  }
   function shopView() {
     return `<h1 class="page-title">Магазин</h1>
+      ${plusCard()}
       <p class="muted">У тебя ${S.gems} 💎. Кристаллы дают за уроки, задания дня и достижения.</p>
       <div class="shop">
         <div class="card item"><div class="i-ico">❤️</div><div class="i-main"><b>Полные сердца</b><small>Сразу ${MAX_HEARTS} сердец</small></div>
@@ -1146,6 +1293,8 @@
         if (owned) btn = it.slot === 'skin' && worn ? '<button class="btn small ghost" disabled>Надето</button>'
           : `<button class="btn small ${worn ? 'ghost' : ''}" data-act="wear" data-id="${id}">${worn ? 'Снять' : 'Надеть'}</button>`;
         else if (it.rare) btn = '<span class="rare-note">🎁 только из золотого сундука</span>';
+        else if (it.plus) btn = '<span class="rare-note">⭐ подарок за Мозгобум Плюс</span>';
+        else if (it.referral) btn = '<span class="rare-note">🤝 за приглашение друга</span>';
         else btn = `<button class="btn small gold" data-act="buy" data-item="item:${id}" ${S.gems < it.price ? 'disabled' : ''}>${it.price} 💎</button>`;
         return `<div class="card hat ${worn ? 'worn' : ''} ${it.rare || it.secret ? 'rare' : ''}">${it.secret ? '<span class="rare-tag secret">секрет</span>' : it.rare ? '<span class="rare-tag">редкое</span>' : ''}
           <div class="hat-m">${MB.mascot('happy', preview)}</div><b>${it.title}</b>${btn}</div>`;
@@ -1153,6 +1302,30 @@
   }
 
   // ---------- Профиль ----------
+  // Приглашение друга: код выдаёт сервер после первой отправки событий
+  function inviteCard() {
+    const link = MB.cloud.on() && MB.cloud.inviteLink();
+    let action;
+    if (link) action = `<div class="inv-link"><code>${esc(link)}</code></div><button class="btn small" data-act="invite">📤 Поделиться ссылкой</button>`;
+    else if (MB.cloud.on()) action = '<small class="muted">Ссылка появится через минуту, когда игра свяжется с сервером.</small>';
+    else action = '<button class="btn small gray" disabled>Скоро</button><small class="muted">Приглашения заработают в ближайшем обновлении.</small>';
+    return `<div class="card invite-card">
+      <div class="inv-head"><span class="inv-ico">🤝</span><div><b>Пригласи друга</b>
+        <small>Когда друг пройдёт первый урок: ему — 50 💎 и щит, тебе — 100 💎 и значок «Лучший друг».</small></div></div>
+      ${action}
+    </div>`;
+  }
+  // Аккаунт по почте выключен по умолчанию: почта — персональные данные, а сервер находится вне РФ
+  let emailStep = null;   // {email, type} — ждём код из письма
+  function accountRow() {
+    if (!MB.cloud.on() || !MB.CONFIG.emailLogin) return '';
+    const u = MB.cloud.user();
+    if (u && u.email) return `<div class="set-row"><span>Аккаунт<small class="muted" style="display:block">${esc(u.email)}</small></span><button class="btn small ghost" data-act="logout">Выйти</button></div>`;
+    if (emailStep) return `<div class="set-row col"><span>Код из письма на ${esc(emailStep.email)}</span>
+      <div class="row-btns"><input id="emailCode" class="name-inp small-inp" inputmode="numeric" maxlength="8" placeholder="123456"><button class="btn small" data-act="email-verify">Войти</button></div></div>`;
+    return `<div class="set-row col"><span>Вход по почте<small class="muted" style="display:block">Чтобы не потерять прогресс и Плюс при смене телефона</small></span>
+      <div class="row-btns"><input id="emailInp" class="name-inp small-inp" type="email" placeholder="почта@пример.ру"><button class="btn small" data-act="email-start">Получить код</button></div></div>`;
+  }
   function profileView() {
     const week = [];
     for (let i = 6; i >= 0; i--) {
@@ -1173,6 +1346,7 @@
         <div class="card sg"><span>💯</span><b>${S.perfect}</b><small>без ошибок</small></div>
         <div class="card sg"><span>🛠️</span><b>${S.fixed}</b><small>ошибок исправлено</small></div>
       </div>
+      ${inviteCard()}
       <h3 class="sec">Опыт за неделю</h3>
       <div class="card chart">${week.map(w => `<div class="bar-col"><div class="bar-v">${w.xp || ''}</div><div class="bar" style="height:${Math.max(4, w.xp / max * 120)}px;${w.xp >= S.goal ? '' : 'opacity:.55'}"></div><small>${w.label}</small></div>`).join('')}
         <div class="goal-line-chart" style="bottom:${28 + S.goal / max * 120}px"><span>цель</span></div></div>
@@ -1182,13 +1356,19 @@
         <div class="set-row"><span>Звук</span><button class="toggle ${S.sound ? 'on' : ''}" data-act="sound" aria-label="Звук"><i></i></button></div>
         ${isApp() ? `<div class="set-row"><span>Напоминания</span><button class="toggle ${S.remind.on ? 'on' : ''}" data-act="remind" aria-label="Напоминания"><i></i></button></div>
         ${S.remind.on ? `<div class="set-row"><span>Во сколько напоминать</span><div class="seg">${[17, 18, 19, 20, 21].map(h => `<button class="${S.remind.hour === h ? 'on' : ''}" data-act="remind-hour" data-h="${h}">${h}:00</button>`).join('')}</div></div>` : ''}`
-        : `<div class="set-row"><span>Приложение для Android<small class="muted" style="display:block">с напоминаниями о серии</small></span><a class="btn small" href="https://github.com/maximlexin/mozgobum/releases/latest/download/mozgobum.apk">📱 Скачать</a></div>`}
+        : `<div class="set-row"><span>Приложение для Android<small class="muted" style="display:block">с напоминаниями о серии</small></span><a class="btn small" data-act="apk" href="https://github.com/maximlexin/mozgobum/releases/latest/download/mozgobum.apk">📱 Скачать</a></div>`}
+        ${accountRow()}
         <div class="set-row"><span>Имя</span><button class="btn small ghost" data-act="rename">${esc(S.name || 'Игрок')} ✏️</button></div>
         <div class="set-row col"><span>Перенос прогресса на другое устройство</span>
           <small class="muted">Входа нет, поэтому прогресс живёт в этом браузере. Скопируй код здесь и вставь на телефоне (или наоборот).</small>
           <div class="row-btns"><button class="btn small" data-act="export">Скопировать код</button><button class="btn small ghost" data-act="import">Вставить код</button></div>
           <textarea id="exportBox" class="export" readonly hidden></textarea></div>
         <div class="set-row"><span>Начать заново</span><button class="btn small red" data-act="reset">Сбросить прогресс</button></div>
+        <div class="set-row"><span>Промокод</span>${S.plusGift ? '<span class="plus-left">⭐ Плюс навсегда</span>' : '<button class="btn small ghost" data-act="promo">Ввести код</button>'}</div>
+        ${MB.CONFIG.features.legal ? `<div class="set-row"><span>Документы</span><a class="btn small ghost" href="docs/" target="_blank" rel="noopener">Соглашение и политика</a></div>
+        <div class="set-row col"><span>Номер учётной записи</span>
+          <small class="muted">Укажи его в письме, если хочешь удалить данные с сервера или вернуть платёж.</small>
+          <code class="acc-id">${esc(MB.cloud.pid)}</code></div>` : ''}
       </div>
       ${isDev() ? `<h3 class="sec">🛠️ Режим разработчика</h3>
       <div class="card settings dev-panel">
@@ -1212,7 +1392,7 @@
       return `<div class="full-screen onboard">
         <div class="big-mascot jump">${MB.mascot('wow')}</div>
         <h1>Привет! Я Бум 👋</h1>
-        <p>Я помогу прокачать мозг по программе 7 класса: математика, русский, физика. Пара минут в день — и ты легенда.</p>
+        <p>Я помогу прокачать мозг по школьной программе. Сейчас открыта программа 7 класса: алгебра, геометрия, русский, физика, биология. Пара минут в день — и ты легенда.</p>
         <input id="nameInp" class="name-inp" maxlength="20" placeholder="Как тебя зовут?" value="${esc(S.name)}">
         <button class="btn big" data-act="ob-next">Дальше</button>
       </div>`;
@@ -1222,7 +1402,33 @@
       <h1>${S.name ? esc(S.name) + ', с' : 'С'}колько заниматься в день?</h1>
       <div class="goals">${[[10, 'Легко', '~3 мин'], [20, 'Нормально', '~6 мин'], [30, 'Серьёзно', '~10 мин'], [50, 'Жёстко', '~15 мин']].map(([g, t, m]) =>
         `<button class="goal-card ${S.goal === g ? 'on' : ''}" data-act="ob-goal" data-g="${g}"><b>${t}</b><span>${m} · ${g} XP</span></button>`).join('')}</div>
-      <button class="btn big" data-act="ob-done">Поехали! 🚀</button>
+      ${MB.CONFIG.features.legal ? consentBlock() : ''}
+      <button class="btn big" data-act="ob-done" data-consent-btn ${MB.CONFIG.features.legal ? 'disabled' : ''}>Поехали! 🚀</button>
+    </div>`;
+  }
+  // Документы принимаются галочками, по умолчанию не отмеченными
+  function consentBlock() {
+    return `<div class="consent">
+      <label><input type="checkbox" class="consent-cb"> Принимаю <a href="docs/terms.html" target="_blank" rel="noopener">пользовательское соглашение</a>
+        и <a href="docs/privacy.html" target="_blank" rel="noopener">политику конфиденциальности</a>, даю <a href="docs/consent.html" target="_blank" rel="noopener">согласие на обработку данных</a></label>
+      <label><input type="checkbox" class="consent-cb"> Мне есть 14 лет, или мой родитель разрешил мне играть</label>
+    </div>`;
+  }
+  const consentOk = () => [...document.querySelectorAll('.consent-cb')].every(c => c.checked);
+  function acceptConsent() {
+    const v = MB.CONFIG.docsVersion;
+    S.consent = { v, at: Date.now() };
+    ['terms', 'privacy', 'consent'].forEach(doc => T('consent_given', { doc, version: v }));
+    startCloud();
+  }
+  // для тех, кто начал играть до появления документов
+  function consentView() {
+    return `<div class="full-screen onboard">
+      <div class="big-mascot">${MB.mascot('happy', S.look)}</div>
+      <h1>Пара формальностей 📄</h1>
+      <p>У Мозгобума появились правила и политика конфиденциальности. Прогресс никуда не делся — просто отметь галочки.</p>
+      ${consentBlock()}
+      <button class="btn big" data-act="consent-ok" data-consent-btn disabled>Продолжить</button>
     </div>`;
   }
 
@@ -1231,6 +1437,7 @@
     MB.sound.enabled = S.sound;
     document.body.className = 'v-' + view;
     if (!S.onboarded) { document.body.className = 'v-onboard'; app.innerHTML = onboardView(); return; }
+    if (!S.consent && MB.CONFIG.features.legal) { document.body.className = 'v-onboard'; app.innerHTML = consentView(); return; }
     if (view === 'lesson' && L) { app.innerHTML = lessonView(); return; }
     if (view === 'result' && L) { app.innerHTML = resultView(); countUp(); return; }
     if (view === 'streak' && L) { app.innerHTML = streakView(); return; }
@@ -1302,10 +1509,11 @@
     'dev-time': () => { addPlayTime(10 * 60000); save(); render(); toast('DEV: +10 минут игры'); },
     'dev-chests': () => { ensurePlayDay(); S.play.opened = []; save(); render(); },
     'dev-items': () => { Object.keys(MB.ITEMS).forEach(id => { if (!S.owned.includes(id)) S.owned.push(id); }); save(); render(); },
-    'dev-map-reset': () => { if (confirm('DEV: сбросить пройденные уровни?')) { S.progress = {}; save(); render(); } },
+    'dev-map-reset': async () => { if (await confirmBox('DEV: сбросить пройденные уровни?', 'Сбросить', true)) { S.progress = {}; save(); render(); } },
     'dev-off': () => { try { localStorage.removeItem(DEV_KEY); } catch (e) { /* нет хранилища */ } render(); toast('Режим разработчика выключен'); },
-    quit: () => {
-      if (L.mode !== 'review' && !confirm('Выйти из урока? Прогресс этого урока пропадёт.')) return;
+    quit: async () => {
+      if (L.mode !== 'review' && !(await confirmBox('Выйти из урока? Прогресс этого урока пропадёт.', 'Выйти', true))) return;
+      if (!L) return;
       const back = { review: 'review', test: 'tests' }[L.mode] || 'learn';
       clearTimeout(L.timer);
       L = null; go(back);
@@ -1351,6 +1559,7 @@
       const q = S.quests.list[Number(el.dataset.i)];
       if (!q || q.claimed || q.progress < q.target) return;
       q.claimed = true; S.gems += q.reward;
+      T('quest_claim', { kind: q.kind });
       checkAchievements(); save();
       MB.sound.play('coin'); confetti(60);
       toast(`+${q.reward} 💎 за задание!`);
@@ -1362,7 +1571,7 @@
       else if (item === 'freeze' && S.gems >= 100 && S.freezes < 2) { S.gems -= 100; S.freezes++; toast('🧊 Заморозка куплена'); }
       else if (item.startsWith('item:')) {
         const id = item.slice(5), it = MB.ITEMS[id];
-        if (!it || it.rare || it.secret || S.owned.includes(id) || S.gems < it.price) return;
+        if (!it || it.rare || it.secret || it.plus || it.referral || S.owned.includes(id) || S.gems < it.price) return;
         S.gems -= it.price; S.owned.push(id); S.look[it.slot] = id;
         toast(`Бум примерил: ${it.title}!`); confetti(50);
       } else if (item.startsWith('boost:')) {
@@ -1371,6 +1580,7 @@
         S.gems -= b.price; S.boost[k]++;
         toast(`${b.icon} ${b.title} +1`);
       } else return;
+      T('shop_buy', { item, from: view });
       MB.sound.play('coin'); save();
       if (view === 'fail') go('learn'); else render();
     },
@@ -1386,6 +1596,7 @@
       const set = MB.SETS[el.dataset.set], price = set && setPrice(set);
       if (!set || !price || S.gems < price) return;
       S.gems -= price;
+      T('shop_buy', { item: 'set:' + el.dataset.set });
       set.items.forEach(id => { if (!S.owned.includes(id)) S.owned.push(id); });
       S.look = setLook(set);
       checkAchievements(); save();
@@ -1432,27 +1643,98 @@
     sound: () => { S.sound = !S.sound; save(); render(); MB.sound.play('tap'); },
     remind: () => { S.remind.on = !S.remind.on; save(); render(); scheduleReminders(); toast(S.remind.on ? '🔔 Напоминания включены' : '🔕 Напоминания выключены'); },
     'remind-hour': el => { S.remind.hour = Number(el.dataset.h); save(); render(); scheduleReminders(); },
-    rename: () => { const n = prompt('Как тебя зовут?', S.name); if (n !== null) { S.name = n.trim().slice(0, 20); save(); render(); } },
+    rename: async () => { const n = await promptBox('Как тебя зовут?', S.name, 'Имя'); if (n !== null) { S.name = n.trim().slice(0, 20); save(); render(); } },
     export: async () => {
       const code = btoa(unescape(encodeURIComponent(JSON.stringify(S))));
       const box = $('#exportBox'); box.hidden = false; box.value = code; box.select();
       try { await navigator.clipboard.writeText(code); toast('Код скопирован! Вставь его на другом устройстве.'); }
       catch (e) { toast('Скопируй код из поля ниже'); }
     },
-    import: () => {
-      const code = prompt('Вставь код прогресса:');
+    import: async () => {
+      const code = await promptBox('Вставь код прогресса', '', 'Код с другого устройства', 'Загрузить');
       if (!code) return;
-      try {
-        const data = JSON.parse(decodeURIComponent(escape(atob(code.trim()))));
-        if (typeof data.xp !== 'number') throw new Error('bad');
-        if (!confirm('Заменить текущий прогресс на загруженный?')) return;
-        S = Object.assign(defaults(), data); save(); toast('Прогресс загружен ✅'); render();
-      } catch (e) { alert('Код не подошёл. Проверь, что скопирован целиком.'); }
+      let data;
+      try { data = JSON.parse(decodeURIComponent(escape(atob(code.trim())))); } catch (e) { data = null; }
+      if (!validState(data)) { await alertBox('Код не подошёл. Проверь, что скопирован целиком.'); return; }
+      if (!(await confirmBox('Заменить текущий прогресс на загруженный?', 'Заменить', true))) return;
+      S = migrate(Object.assign(defaults(), data)); save(); toast('Прогресс загружен ✅'); render();
     },
-    reset: () => { if (confirm('Точно стереть весь прогресс? Это нельзя отменить.')) { localStorage.removeItem(KEY); S = defaults(); onboardStep = 0; view = 'learn'; render(); } },
+    reset: async () => {
+      if (!(await confirmBox('Точно стереть весь прогресс? Это нельзя отменить.', 'Стереть', true))) return;
+      localStorage.removeItem(KEY); S = defaults(); onboardStep = 0; view = 'learn'; render();
+    },
     'ob-next': () => { S.name = ($('#nameInp').value || '').trim().slice(0, 20); onboardStep = 1; render(); },
     'ob-goal': el => { S.goal = Number(el.dataset.g); render(); MB.sound.play('tap'); },
-    'ob-done': () => { S.onboarded = true; S.quests.day = ''; ensureQuests(); save(); MB.sound.play('finish'); confetti(); render(); scheduleReminders(); },
+    'ob-done': () => {
+      if (MB.CONFIG.features.legal) {
+        if (!consentOk()) return;
+        acceptConsent();
+      }
+      S.onboarded = true; S.quests.day = ''; ensureQuests(); save();
+      T('onboarding_done', { goal: S.goal });
+      MB.sound.play('finish'); confetti(); render(); scheduleReminders();
+    },
+    'consent-ok': () => { if (!consentOk()) return; acceptConsent(); save(); render(); },
+    // ----- Плюс и оплата -----
+    'plus-buy': async el => {
+      T('plus_buy_click', { renew: isPlus(), online: MB.cloud.on() });
+      if (!MB.cloud.on()) {
+        if (isDev() && await confirmBox('Тестовая покупка: деньги не списываются. Подключить Плюс на 30 дней?', 'Подключить')) {
+          activatePlus(Math.max(Date.now(), S.plusUntil || 0) + MB.CONFIG.plus.days * DAY, true);
+        }
+        return;
+      }
+      el.disabled = true;
+      el.textContent = 'Открываем оплату…';
+      try { await MB.cloud.buy(MB.CONFIG.plus.sku); }
+      catch (e) { toast('Не получилось начать оплату. Проверь интернет и попробуй ещё раз'); render(); }
+    },
+    'plus-check': () => checkPayment(true),
+    promo: async () => {
+      const code = ((await promptBox('Промокод', '', 'BUM-XXXX-XXXX', 'Активировать')) || '').trim().toUpperCase();
+      if (!code) return;
+      let hex = '';
+      try {
+        const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code));
+        hex = [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+      } catch (e) { toast('Промокод можно ввести только на сайте или в приложении'); return; }
+      if (!(MB.CONFIG.giftHashes || []).includes(hex)) { toast('Такого промокода нет'); return; }
+      S.plusGift = true;
+      plusPerks(); save();
+      T('promo_redeemed', {});
+      MB.sound.play('finish'); confetti();
+      toast('🎁 Промокод принят: Мозгобум Плюс навсегда!');
+      render();
+    },
+    invite: async () => {
+      const link = MB.cloud.inviteLink();
+      if (!link) return;
+      T('referral_share', {});
+      const text = 'Залетай в Мозгобум — прокачиваем школьную программу как в игре! По моей ссылке получишь 50 💎 и щит:';
+      try {
+        if (navigator.share) { await navigator.share({ title: 'Мозгобум', text, url: link }); return; }
+        await navigator.clipboard.writeText(`${text} ${link}`);
+        toast('Ссылка скопирована — отправь её другу');
+      } catch (e) { if (e && e.name !== 'AbortError') ask({ title: 'Скопируй ссылку и отправь другу', input: link, ok: 'Готово', cancel: false }); }
+    },
+    apk: () => T('apk_download_click', {}),
+    // ----- вход по почте (если включён в config.js) -----
+    'email-start': async () => {
+      const email = ($('#emailInp').value || '').trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast('Проверь адрес почты'); return; }
+      try { emailStep = { email, type: await MB.cloud.emailStart(email) }; toast('📨 Код отправлен на почту'); render(); }
+      catch (e) { toast('Не получилось отправить код. Попробуй позже'); }
+    },
+    'email-verify': async () => {
+      const code = ($('#emailCode').value || '').trim();
+      if (!code) return;
+      try {
+        await MB.cloud.emailVerify(emailStep.email, code, emailStep.type);
+        emailStep = null; T('email_linked', {}); toast('✅ Готово! Прогресс и Плюс привязаны к почте');
+        syncPlus(); cloudRestore(); render();
+      } catch (e) { toast('Код не подошёл. Проверь и попробуй ещё раз'); }
+    },
+    logout: async () => { if (await confirmBox('Выйти из аккаунта на этом устройстве? Прогресс на устройстве останется.', 'Выйти')) { MB.cloud.logout(); render(); } },
   };
 
   document.addEventListener('click', e => {
@@ -1462,7 +1744,18 @@
     if (fn) fn(el, e);
   });
   document.addEventListener('input', e => { if (e.target.id === 'ans' && L && L.state === 'answer') refreshFoot(); });
+  document.addEventListener('change', e => {
+    if (!e.target.classList.contains('consent-cb')) return;
+    const b = $('[data-consent-btn]');
+    if (b) b.disabled = !consentOk();
+  });
   document.addEventListener('keydown', e => {
+    if (dialog) {   // открыто наше окно: Enter — ОК, Escape — отмена
+      if (e.key === 'Enter') { e.preventDefault(); closeDialog(true); }
+      if (e.key === 'Escape') closeDialog(false);
+      return;
+    }
+    if (e.repeat) return;   // зажатая клавиша не должна прокликивать урок и сыпать звуками
     if (e.key === 'Enter' && e.target.id === 'nameInp') { ACT['ob-next'](); return; }
     if (view !== 'lesson' || !L) return;
     if (e.key === 'Enter') {
@@ -1481,6 +1774,42 @@
       if (btn && !btn.disabled) ACT.opt(btn);
     }
   });
+
+  // ---------- Свои окна вместо prompt/confirm/alert ----------
+  // Системные окна не показываются во встроенных браузерах и части WebView — кнопки «молча» не работали.
+  let dialog = null;   // {title, text, input, placeholder, ok, cancel, danger, resolve}
+  function ask(opts) {
+    if (dialog) closeDialog(false);
+    return new Promise(resolve => { dialog = { ...opts, resolve }; renderDialog(); });
+  }
+  function renderDialog() {
+    let layer = $('#dialog-layer');
+    if (!layer) { layer = document.createElement('div'); layer.id = 'dialog-layer'; document.body.appendChild(layer); }
+    if (!dialog) { layer.innerHTML = ''; return; }
+    const d = dialog;
+    layer.innerHTML = `<div class="sheet-bg dlg-bg"><div class="sheet dlg" role="dialog" aria-modal="true">
+      ${d.title ? `<h2>${esc(d.title)}</h2>` : ''}${d.text ? `<p>${esc(d.text)}</p>` : ''}
+      ${d.input !== undefined ? `<input id="dlgInput" class="name-inp" value="${esc(d.input)}" placeholder="${esc(d.placeholder || '')}" autocomplete="off" spellcheck="false">` : ''}
+      <div class="dlg-btns">${d.cancel === false ? '' : `<button class="btn ghost" data-dlg="0">${esc(d.cancel || 'Отмена')}</button>`}
+        <button class="btn ${d.danger ? 'red' : ''}" data-dlg="1">${esc(d.ok || 'ОК')}</button></div>
+    </div></div>`;
+    const inp = $('#dlgInput');
+    if (inp) setTimeout(() => { inp.focus(); inp.select(); }, 50);
+  }
+  function closeDialog(ok) {
+    if (!dialog) return;
+    const d = dialog, inp = $('#dlgInput'), val = inp ? inp.value : null;
+    dialog = null;
+    renderDialog();
+    d.resolve(d.input !== undefined ? (ok ? val : null) : ok);
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-dlg]');
+    if (b) { e.stopPropagation(); closeDialog(b.dataset.dlg === '1'); }
+  }, true);
+  const confirmBox = (text, ok = 'Да', danger = false) => ask({ text, ok, danger });
+  const promptBox = (title, value = '', placeholder = '', ok = 'Готово') => ask({ title, input: value, placeholder, ok });
+  const alertBox = text => ask({ text, ok: 'Понятно', cancel: false });
 
   // ---------- Мелочи: тосты и конфетти ----------
   function toast(text) {
@@ -1519,7 +1848,27 @@
   checkStreak();
   ensureQuests();
   save();
+  plusPerks();
   render();
+  if (brokenSaved) setTimeout(() => toast('⚠️ Сохранение было повреждено. Копия отложена, начинаем заново.'), 800);
+  T('app_open', { onboarded: S.onboarded, plus: isPlus(), lessons: S.lessons, streak: S.streak });
+  // облако работает только после согласия с документами
+  let cloudStarted = false;
+  function startCloud() {
+    if (cloudStarted || !S.consent) return;
+    cloudStarted = true;
+    MB.cloud.allow(true);
+    if (!MB.cloud.on()) return;
+    if (MB.cloud.hasPending()) checkPayment(false);
+    syncPlus();
+    applyRewards();
+    cloudRestore();
+  }
+  startCloud();
+  document.addEventListener('visibilitychange', () => {
+    // вернулись из браузера после оплаты (в Android-приложении) — проверяем платёж
+    if (document.visibilityState === 'visible' && MB.cloud.on() && MB.cloud.hasPending()) checkPayment(false);
+  });
   if (S.onboarded) scheduleReminders();
   setInterval(() => {
     const before = S.hearts;

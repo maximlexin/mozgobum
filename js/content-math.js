@@ -427,6 +427,21 @@
     tf('Размах ряда 5; 2; 10 равен 5.', false, 'Размах = 10 − 2 = 8.'),
   ];
 
+  // ---------- Собери формулу ----------
+  // для сумм порядок слагаемых важен, поэтому даём допустимые варианты в accept
+  const fsuFormulas = [
+    { type: 'formula', q: 'Собери формулу: квадрат суммы', items: ['(a + b)²', '=', 'a²', '+', '2ab', '+', 'b²'], extra: ['−'],
+      accept: [['a²', '+', '2ab', '+', 'b²', '=', '(a + b)²']], ex: '(a + b)² = a² + 2ab + b²' },
+    { type: 'formula', q: 'Собери формулу: квадрат разности', items: ['(a − b)²', '=', 'a²', '−', '2ab', '+', 'b²'], extra: ['−b²'],
+      accept: [['a²', '−', '2ab', '+', 'b²', '=', '(a − b)²']], ex: '(a − b)² = a² − 2ab + b²' },
+    { type: 'formula', q: 'Собери формулу: разность квадратов', items: ['a² − b²', '=', '(a − b)', '·', '(a + b)'], extra: ['(a + b)²'],
+      accept: [['a² − b²', '=', '(a + b)', '·', '(a − b)']], ex: 'a² − b² = (a − b)(a + b) — порядок скобок не важен.' },
+  ];
+  const powFormulas = [
+    { type: 'formula', q: 'Собери свойство степеней: умножение', items: ['aᵐ', '·', 'aⁿ', '=', 'aᵐ⁺ⁿ'], extra: ['aᵐⁿ'], ex: 'При умножении показатели складываются.' },
+    { type: 'formula', q: 'Собери свойство степеней: деление', items: ['aᵐ', '/', 'aⁿ', '=', 'aᵐ⁻ⁿ'], extra: ['aᵐ⁺ⁿ'], ex: 'При делении показатели вычитаются.' },
+  ];
+
   // ---------- Теория (необязательная, открывается облачком на карте) ----------
   const T = {
     warm: `<p><b>Отрицательные числа</b></p>
@@ -477,13 +492,13 @@
       ] },
       { id: 'm-pow', title: 'Степени и одночлены', desc: 'Степень с натуральным показателем', theory: T.pow, lessons: [
         { title: 'Что такое степень', pool: [powCalc, powCalc, ...powStatic] },
-        { title: 'Свойства степеней', pool: [powRules, powRules, powTf] },
+        { title: 'Свойства степеней', pool: [powRules, powRules, powTf, ...powFormulas] },
         { title: 'Одночлены', pool: [mono, mono, ...monoStatic, monoSort] },
       ] },
       { id: 'm-poly', title: 'Многочлены', desc: 'Подобные слагаемые, скобки, формулы', theory: T.poly, lessons: [
         { title: 'Подобные слагаемые', pool: [likeTerms] },
         { title: 'Раскрытие скобок', pool: [brackets] },
-        { title: 'Формулы сокращённого умножения', pool: [fsu] },
+        { title: 'Формулы сокращённого умножения', pool: [fsu, fsu, ...fsuFormulas] },
       ] },
       { id: 'm-func', title: 'Линейная функция', desc: 'y = kx + b и системы уравнений', theory: T.func, lessons: [
         { title: 'Функция y = kx + b', pool: [linFunc, linFunc, ...linStatic, funcSort] },

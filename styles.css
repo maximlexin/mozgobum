@@ -534,6 +534,41 @@ a.btn { display: inline-block; text-decoration: none; }
 .review-none { padding: 16px; text-align: center; }
 .result .sec { text-align: left; }
 
+/* ===== Диктант и формулы ===== */
+.order.formula .tile { font-family: 'Cambria Math', 'Times New Roman', serif; font-size: 22px; font-weight: 700; min-width: 44px; text-align: center; }
+.order.dictation .tile { font-size: 17px; }
+
+/* ===== Плюс, приглашения, согласия ===== */
+.plus-card { padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; margin: 6px 0 18px;
+  background: linear-gradient(140deg, color-mix(in srgb, #7c4dff 18%, var(--surface)), var(--surface) 70%);
+  border-color: color-mix(in srgb, #7c4dff 45%, var(--line)); }
+.plus-card.active { border-color: var(--gold); box-shadow: 0 4px 0 var(--gold-d); }
+.plus-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.plus-logo { font-size: 20px; font-weight: 900; color: #7c4dff; }
+.plus-left { font-size: 13px; font-weight: 900; color: var(--gold-d); background: color-mix(in srgb, var(--gold) 20%, transparent); padding: 3px 10px; border-radius: 99px; }
+.plus-perks { margin: 0; padding-left: 4px; list-style: none; display: grid; gap: 6px; font-size: 15px; }
+.plus-card small a { color: var(--blue); }
+.plus-badge { color: #7c4dff; }
+.invite-card { padding: 16px 18px; margin-top: 14px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.inv-head { display: flex; gap: 12px; align-items: flex-start; }
+.inv-ico { font-size: 30px; }
+.inv-head small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+.inv-link code, .acc-id { display: block; font-size: 12px; background: var(--surface-2); padding: 8px 10px; border-radius: 10px; word-break: break-all; }
+.consent { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 420px; text-align: left; font-size: 14px; color: var(--text); }
+.consent label { display: flex; gap: 10px; align-items: flex-start; line-height: 1.35; }
+.consent input { width: 20px; height: 20px; flex: none; margin-top: 1px; accent-color: var(--green); }
+.consent a { color: var(--blue); }
+.dlg { gap: 14px; max-width: 420px; }
+.dlg p { color: var(--text); }
+.dlg .name-inp { max-width: none; text-align: left; }
+.dlg-btns { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+.dlg-btns .btn { flex: 1; min-width: 120px; }
+.dlg .btn:not(.ghost):not(.red) { --c: var(--green); --cd: var(--green-d); }
+.dlg .btn.red { --c: var(--red); --cd: var(--red-d); }
+.dlg-bg { z-index: 90; }
+@media (min-width: 761px) { .dlg-bg { align-items: center; } }
+.small-inp { max-width: 220px; font-size: 16px; padding: 9px 12px; text-align: left; }
+
 /* ===== Режим разработчика ===== */
 .dev-tag { background: #222; color: #ffd84a; font-size: 11px; font-weight: 900; padding: 3px 7px; border-radius: 6px; letter-spacing: .08em; }
 .dev-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding-top: 8px; border-top: 2px dashed var(--line); }

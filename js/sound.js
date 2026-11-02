@@ -2,8 +2,12 @@
 MB.sound = (() => {
   let ctx = null;
   const ac = () => (ctx = ctx || new (window.AudioContext || window.webkitAudioContext)());
+  const last = {};          // когда последний раз звучал каждый звук
+  let active = 0;           // сколько осцилляторов звучит прямо сейчас
+  const MAX_ACTIVE = 16;
 
   function tone(freq, start, dur, type = 'sine', vol = 0.18) {
+    if (active >= MAX_ACTIVE) return;
     const c = ac(), o = c.createOscillator(), g = c.createGain();
     o.type = type;
     o.frequency.setValueAtTime(freq, c.currentTime + start);
@@ -11,6 +15,8 @@ MB.sound = (() => {
     g.gain.linearRampToValueAtTime(vol, c.currentTime + start + 0.01);
     g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + start + dur);
     o.connect(g).connect(c.destination);
+    active++;
+    o.onended = () => { active--; o.disconnect(); g.disconnect(); };
     o.start(c.currentTime + start);
     o.stop(c.currentTime + start + dur + 0.05);
   }
@@ -25,11 +31,26 @@ MB.sound = (() => {
     fail:    () => [392, 330, 262].forEach((f, i) => tone(f, i * 0.18, 0.3, 'triangle', 0.14)),
   };
 
+  // Пока вкладка скрыта, браузер приостанавливает звук; запланированные ноты копились бы
+  // и потом звучали все разом. Поэтому в скрытой вкладке не играем вообще.
+  document.addEventListener('visibilitychange', () => {
+    if (!ctx) return;
+    if (document.visibilityState === 'hidden') ctx.suspend().catch(() => {});
+    else ctx.resume().catch(() => {});
+  });
+
   return {
     enabled: true,
     play(name) {
-      if (!this.enabled || !sets[name]) return;
-      try { sets[name](); } catch (e) { /* звук не обязателен */ }
+      if (!this.enabled || !sets[name] || document.visibilityState === 'hidden') return;
+      const now = performance.now();
+      if (now - (last[name] || 0) < 120) return;   // один и тот же звук не чаще раза в 120 мс
+      last[name] = now;
+      try {
+        const c = ac();
+        if (c.state !== 'running') { c.resume().catch(() => {}); return; }   // не копим ноты, пока звук на паузе
+        sets[name]();
+      } catch (e) { /* звук не обязателен */ }
     },
   };
 })();

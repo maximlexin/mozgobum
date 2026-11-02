@@ -1,8 +1,9 @@
 // Офлайн-кэш. При изменении файлов игры поднимай VERSION, чтобы телефоны получили обновление.
-const VERSION = 'mozgobum-v6';
+const VERSION = 'mozgobum-v8';
 const FILES = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
-  'js/util.js', 'js/content-math.js', 'js/content-geometry.js','js/content-russian.js', 'js/content-physics.js', 'js/content-biology.js','js/mascot.js', 'js/sound.js', 'js/app.js',
+  'js/util.js', 'js/config.js', 'js/cloud.js', 'js/content-math.js', 'js/content-geometry.js', 'js/content-russian.js',
+  'js/content-physics.js', 'js/content-biology.js', 'js/mascot.js', 'js/sound.js', 'js/app.js',
 ];
 
 self.addEventListener('install', e => {
@@ -14,12 +15,13 @@ self.addEventListener('activate', e => {
 });
 
 // Сначала сеть (чтобы обновления приходили сразу), без сети — кэш.
+// Запросы к серверу (Supabase, ЮKassa) не трогаем: их нельзя отдавать из кэша.
 self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET') return;
+  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
   e.respondWith(
     fetch(e.request)
       .then(res => {
-        if (res.ok && new URL(e.request.url).origin === location.origin) {
+        if (res.ok) {
           const copy = res.clone();
           caches.open(VERSION).then(c => c.put(e.request, copy));
         }

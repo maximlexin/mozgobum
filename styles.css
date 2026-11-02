@@ -549,6 +549,16 @@ a.btn { display: inline-block; text-decoration: none; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .path > .scene { filter: brightness(.72) saturate(.9); } }
 :root[data-theme="dark"] .path > .scene { filter: brightness(.72) saturate(.9); }
 
+/* ===== Статистика разработчика ===== */
+.st-top { border: 0; padding: 4px 0 12px; }
+.st-empty { padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+.st-tiles .sg b { font-size: 22px; }
+.st-bars { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; }
+.st-bar { display: grid; grid-template-columns: minmax(110px, 38%) 1fr auto; align-items: center; gap: 10px; font-size: 14px; }
+.st-bar i { height: 14px; border-radius: 99px; background: linear-gradient(90deg, var(--blue), var(--purple)); min-width: 3px; }
+.st-bar b { font-size: 14px; }
+.st-chart .bar { background: var(--blue); }
+
 /* ===== Мем «6-7» ===== */
 .mascot .p67 { transform-box: fill-box; transform-origin: center; animation: six7 .7s ease-in-out infinite; }
 .mascot .p67-r { animation-delay: -.35s; }

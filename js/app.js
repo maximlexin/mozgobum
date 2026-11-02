@@ -454,7 +454,8 @@
       for (let d = 0; d < 7; d++) {
         const at = new Date();
         at.setDate(at.getDate() + d);
-        at.setHours(S.remind.hour, 0, 0, 0);
+        // каждый день в случайное время с 16:00 до 21:00 — так напоминания не приедаются
+        at.setHours(16 + Math.floor(Math.random() * 5), Math.floor(Math.random() * 60), 0, 0);
         if (at.getTime() <= Date.now() || (d === 0 && played)) continue;
         let pool = lazy.slice(d, d + 1);
         if (d === 0 && S.streak) pool = NOTIFY.risk;
@@ -1367,8 +1368,7 @@
       <div class="card settings">
         <div class="set-row"><span>Цель дня</span><div class="seg">${[[10, 'Легко'], [20, 'Норм'], [30, 'Серьёзно'], [50, 'Жёстко']].map(([g, t]) => `<button class="${S.goal === g ? 'on' : ''}" data-act="goal" data-g="${g}">${t}<small>${g} XP</small></button>`).join('')}</div></div>
         <div class="set-row"><span>Звук</span><button class="toggle ${S.sound ? 'on' : ''}" data-act="sound" aria-label="Звук"><i></i></button></div>
-        ${isApp() ? `<div class="set-row"><span>Напоминания</span><button class="toggle ${S.remind.on ? 'on' : ''}" data-act="remind" aria-label="Напоминания"><i></i></button></div>
-        ${S.remind.on ? `<div class="set-row"><span>Во сколько напоминать</span><div class="seg">${[17, 18, 19, 20, 21].map(h => `<button class="${S.remind.hour === h ? 'on' : ''}" data-act="remind-hour" data-h="${h}">${h}:00</button>`).join('')}</div></div>` : ''}`
+        ${isApp() ? `<div class="set-row"><span>Напоминания<small class="muted" style="display:block">Бум сам напишет вечером, когда-то между 16 и 21</small></span><button class="toggle ${S.remind.on ? 'on' : ''}" data-act="remind" aria-label="Напоминания"><i></i></button></div>`
         : `<div class="set-row"><span>Приложение для Android<small class="muted" style="display:block">с напоминаниями о серии</small></span><a class="btn small" data-act="apk" href="https://github.com/maximlexin/mozgobum/releases/latest/download/mozgobum.apk">📱 Скачать</a></div>`}
         ${accountRow()}
         <div class="set-row"><span>Имя</span><button class="btn small ghost" data-act="rename">${esc(S.name || 'Игрок')} ✏️</button></div>
@@ -1387,6 +1387,7 @@
       <div class="card settings dev-panel">
         <p class="muted">Все уровни открыты, в уроке есть кнопка ⏭ (засчитать задание), в карточке уровня — «Засчитать».</p>
         <div class="row-btns">
+          <button class="btn small blue" data-act="nav" data-v="stats">📊 Статистика</button>
           <button class="btn small" data-act="dev-gems">+1000 💎</button>
           <button class="btn small" data-act="dev-hearts">❤️ Полные сердца</button>
           <button class="btn small" data-act="dev-boost">+5 бустеров</button>
@@ -1397,6 +1398,73 @@
           <button class="btn small red" data-act="dev-off">Выключить режим</button>
         </div>
       </div>` : ''}`;
+  }
+
+  // ---------- Статистика для разработчика (только режим разработчика) ----------
+  // Данные отдаёт серверная функция stats по секретному ключу; ключ хранится только на этом устройстве.
+  const ADMIN_KEY = 'mozgobum-admin';
+  let stats = { days: 14, data: null, loading: false, error: '' };
+  const adminToken = () => { try { return localStorage.getItem(ADMIN_KEY) || ''; } catch (e) { return ''; } };
+  async function loadStats() {
+    const C = MB.CONFIG;
+    if (!C.supabaseUrl || !adminToken() || stats.loading) return;
+    stats.loading = true; stats.error = ''; render();
+    try {
+      const r = await fetch(`${C.supabaseUrl}/functions/v1/stats`, { method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: C.supabaseAnonKey, Authorization: `Bearer ${C.supabaseAnonKey}`, 'x-admin-token': adminToken() },
+        body: JSON.stringify({ days: stats.days }) });
+      if (r.status === 401 || r.status === 403) throw new Error('Неверный ключ доступа');
+      if (!r.ok) throw new Error(`Сервер ответил ${r.status}`);
+      stats.data = await r.json();
+    } catch (e) { stats.error = e.message || 'Нет связи с сервером'; }
+    stats.loading = false;
+    if (view === 'stats') render();
+  }
+  const num = v => (v == null || isNaN(v) ? '—' : Number(v).toLocaleString('ru-RU'));
+  // [{a:..,b:..}] или {a:..} → [[подпись, значение]]
+  const pairs = (v, keyNames = ['subj', 'subject', 'platform', 'name', 'key'], valNames = ['lessons', 'players', 'count', 'value', 'n']) =>
+    Array.isArray(v) ? v.map(o => [keyNames.map(k => o[k]).find(x => x != null) ?? '?', valNames.map(k => o[k]).find(x => x != null) ?? 0])
+      : Object.entries(v || {});
+  function barList(rows, unit = '') {
+    const max = Math.max(1, ...rows.map(r => Number(r[1]) || 0));
+    return `<div class="st-bars">${rows.map(([k, v]) => `<div class="st-bar"><span>${esc(k)}</span><i style="width:${(Number(v) || 0) / max * 100}%"></i><b>${num(v)}${unit}</b></div>`).join('') || '<small class="muted">нет данных</small>'}</div>`;
+  }
+  function statsView() {
+    const C = MB.CONFIG, d = stats.data;
+    let body;
+    if (!C.supabaseUrl) body = `<div class="card st-empty"><b>Сервер ещё не подключён</b>
+      <p class="muted">Статистика собирается в базе Supabase. Когда проект будет создан и адрес вписан в js/config.js, здесь появятся цифры по всем игрокам.
+      Пока события копятся на устройствах и уйдут на сервер после подключения.</p>
+      <small class="muted">На этом устройстве в очереди событий: ${num(JSON.parse(localStorage.getItem('mozgobum-events') || '[]').length)}</small></div>`;
+    else if (!adminToken()) body = `<div class="card st-empty"><b>Нужен ключ доступа</b>
+      <p class="muted">Это ADMIN_TOKEN из настроек сервера. Он сохранится только на этом устройстве.</p>
+      <button class="btn" data-act="stats-token">Ввести ключ</button></div>`;
+    else if (stats.loading && !d) body = '<div class="card st-empty">Загружаем…</div>';
+    else if (stats.error && !d) body = `<div class="card st-empty"><b>${esc(stats.error)}</b><div class="row-btns"><button class="btn small" data-act="stats-reload">Ещё раз</button><button class="btn small ghost" data-act="stats-token">Сменить ключ</button></div></div>`;
+    else if (d) {
+      const t = d.totals || {}, f = d.funnel || {}, ret = d.retention || {}, daily = d.daily || [];
+      const tiles = [['👥', t.players, 'игроков всего'], ['🔥', t.players_7d_active, 'активны за 7 дней'], ['📚', t.lessons_finished, 'уроков пройдено'],
+        ['📈', d.avg_lessons_per_active != null ? Number(d.avg_lessons_per_active).toFixed(1) : null, 'уроков на активного'], ['💰', t.revenue, '₽ выручка'],
+        ['🧾', t.paid_purchases, 'оплат'], ['🤝', t.referrals, 'приглашений'], ['↩️', ret.d1 != null ? Math.round(ret.d1 * 100) + '%' : null, 'вернулись на 1-й день'],
+        ['📅', ret.d7 != null ? Math.round(ret.d7 * 100) + '%' : null, 'вернулись на 7-й день']];
+      const funnelNames = { app_open: 'Открыли игру', onboarding_done: 'Прошли знакомство', lesson_start: 'Начали урок', lesson_finish: 'Закончили урок',
+        shop_buy: 'Купили за 💎', plus_buy_click: 'Нажали «Купить Плюс»', plus_paid: 'Оплатили Плюс' };
+      const maxDau = Math.max(1, ...daily.map(x => x.dau || 0));
+      body = `<div class="stat-grid st-tiles">${tiles.map(([i, v, l]) => `<div class="card sg"><span>${i}</span><b>${typeof v === 'string' ? v : num(v)}</b><small>${l}</small></div>`).join('')}</div>
+        <h3 class="sec">Активные игроки по дням</h3>
+        <div class="card chart st-chart">${daily.map(x => `<div class="bar-col"><div class="bar-v">${x.dau || ''}</div><div class="bar" style="height:${Math.max(3, (x.dau || 0) / maxDau * 120)}px"></div><small>${String(x.day || '').slice(5)}</small></div>`).join('') || '<small class="muted">нет данных</small>'}</div>
+        <h3 class="sec">Воронка за ${stats.days} дней</h3>
+        <div class="card">${barList(Object.keys(funnelNames).filter(k => k in f).map(k => [funnelNames[k], f[k]]))}</div>
+        <h3 class="sec">Предметы (уроки за ${stats.days} дней)</h3>
+        <div class="card">${barList(pairs(d.subjects).map(([k, v]) => [(MB.subjects.find(s => s.id === k) || { title: k }).title, v]))}</div>
+        <h3 class="sec">Платформы</h3>
+        <div class="card">${barList(pairs(d.platforms).map(([k, v]) => [k === 'android' ? 'Android-приложение' : k === 'web' ? 'Сайт' : k, v]))}</div>
+        ${stats.loading ? '<p class="muted">Обновляем…</p>' : ''}`;
+    }
+    return `<h1 class="page-title">📊 Статистика</h1>
+      <div class="set-row st-top"><div class="seg">${[7, 14, 30, 90].map(n => `<button class="${stats.days === n ? 'on' : ''}" data-act="stats-days" data-n="${n}">${n} дн.</button>`).join('')}</div>
+        ${C.supabaseUrl && adminToken() ? '<button class="btn small ghost" data-act="stats-reload">⟳ Обновить</button>' : ''}</div>
+      ${body}`;
   }
 
   // ---------- Знакомство ----------
@@ -1456,7 +1524,8 @@
     if (view === 'streak' && L) { app.innerHTML = streakView(); return; }
     if (view === 'fail') { app.innerHTML = failView(); return; }
     if (['lesson', 'result', 'streak'].includes(view)) view = 'learn';
-    const pages = { learn: learnView, tests: testsView, review: reviewView, quests: questsView, shop: shopView, profile: profileView };
+    const pages = { learn: learnView, tests: testsView, review: reviewView, quests: questsView, shop: shopView, profile: profileView,
+      stats: () => (isDev() ? statsView() : learnView()) };
     app.innerHTML = shell((pages[view] || learnView)());
     if (view === 'learn') MB.scene.decorate(app);
     if (view === 'learn' && !sheet) scrollToCurrent();
@@ -1482,7 +1551,11 @@
 
   // ---------- Действия ----------
   const ACT = {
-    nav: el => { if (el.dataset.v === 'learn') scrolledOnce = false; go(el.dataset.v); },
+    nav: el => {
+      if (el.dataset.v === 'learn') scrolledOnce = false;
+      go(el.dataset.v);
+      if (el.dataset.v === 'stats' && !stats.data) loadStats();
+    },
     subj: el => { S.subject = el.dataset.s; save(); scrolledOnce = false; render(); MB.sound.play('tap'); },
     node: el => { sheet = el.dataset.k; render(); MB.sound.play('tap'); },
     'close-sheet': () => { sheet = null; render(); },
@@ -1656,7 +1729,6 @@
     },
     sound: () => { S.sound = !S.sound; save(); render(); MB.sound.play('tap'); },
     remind: () => { S.remind.on = !S.remind.on; save(); render(); scheduleReminders(); toast(S.remind.on ? '🔔 Напоминания включены' : '🔕 Напоминания выключены'); },
-    'remind-hour': el => { S.remind.hour = Number(el.dataset.h); save(); render(); scheduleReminders(); },
     rename: async () => { const n = await promptBox('Как тебя зовут?', S.name, 'Имя'); if (n !== null) { S.name = n.trim().slice(0, 20); save(); render(); } },
     export: async () => {
       const code = btoa(unescape(encodeURIComponent(JSON.stringify(S))));
@@ -1704,6 +1776,15 @@
       catch (e) { toast('Не получилось начать оплату. Проверь интернет и попробуй ещё раз'); render(); }
     },
     'plus-check': () => checkPayment(true),
+    // ----- статистика разработчика -----
+    'stats-token': async () => {
+      const t = await promptBox('Ключ доступа к статистике', '', 'ADMIN_TOKEN', 'Сохранить');
+      if (t == null) return;
+      try { localStorage.setItem(ADMIN_KEY, t.trim()); } catch (e) { /* нет хранилища */ }
+      stats.data = null; loadStats(); render();
+    },
+    'stats-reload': () => loadStats(),
+    'stats-days': el => { stats.days = Number(el.dataset.n); stats.data = null; loadStats(); render(); },
     promo: async () => {
       const code = ((await promptBox('Промокод', '', 'BUM-XXXX-XXXX', 'Активировать')) || '').trim().toUpperCase();
       if (!code) return;

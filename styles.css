@@ -559,6 +559,67 @@ a.btn { display: inline-block; text-decoration: none; }
 .st-bar b { font-size: 14px; }
 .st-chart .bar { background: var(--blue); }
 
+.hello-m { cursor: pointer; }
+.hello-m.hop { animation: jump .5s cubic-bezier(.3, 1.6, .5, 1); }
+
+/* ===== Новый год ===== */
+.mascot .bulb { animation: twinkle 1.3s ease-in-out infinite; }
+.mascot .bulb:nth-child(2n) { animation-delay: -.45s; }
+.mascot .bulb:nth-child(3n) { animation-delay: -.9s; }
+.ny-tag { position: absolute; top: 8px; left: 8px; background: linear-gradient(90deg, #e53935, #2e9d4f); color: #fff; font-size: 10px; font-weight: 900;
+  text-transform: uppercase; letter-spacing: .05em; padding: 2px 7px; border-radius: 99px; }
+#snow { position: fixed; inset: 0; pointer-events: none; z-index: 5; overflow: hidden; }
+#snow i { position: absolute; top: -12px; color: #fff; text-shadow: 0 0 4px rgba(120, 170, 220, .8); animation: snowfall linear infinite; opacity: .85; font-style: normal; }
+@keyframes snowfall { to { transform: translate3d(var(--dx, 30px), 105vh, 0) rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { #snow { display: none; } }
+.ny-count { display: flex; align-items: center; gap: 12px; padding: 12px 16px; margin: 6px 0 16px; font-weight: 900;
+  background: linear-gradient(120deg, color-mix(in srgb, #e53935 14%, var(--surface)), color-mix(in srgb, #2e9d4f 14%, var(--surface))); }
+.ny-count span { font-size: 28px; }
+.boom-quote { position: relative; background: var(--surface-2); border-radius: 16px; padding: 12px 16px; font-size: 15px; max-width: 420px; text-align: left; }
+.boom-quote b { color: var(--purple); }
+
+/* ===== Теория: синие рамки определений (как в учебнике), переключатель кратко/подробно ===== */
+.def { margin: 10px 0 14px; padding: 12px 14px; border-radius: 14px; background: color-mix(in srgb, var(--blue) 9%, var(--surface));
+  border: 2px solid var(--blue); font-weight: 700; line-height: 1.5; position: relative; }
+.def b:first-child { color: var(--blue-d); }
+.def::before { content: 'Запомни'; position: absolute; top: -10px; left: 12px; background: var(--blue); color: #fff; font-size: 11px; font-weight: 900;
+  text-transform: uppercase; letter-spacing: .05em; padding: 1px 8px; border-radius: 99px; }
+.theory-tabs { width: 100%; margin: 2px 0 4px; }
+.theory-tabs button { flex: 1; font-size: 15px; }
+.theory-body h4 { margin: 14px 0 6px; font-size: 17px; }
+.theory-body table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; font-size: 15px; }
+.theory-body th, .theory-body td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; }
+.theory-body th { background: var(--surface-2); }
+.theory-body .note { background: color-mix(in srgb, var(--orange) 12%, var(--surface)); border-left: 5px solid var(--orange); padding: 10px 12px; border-radius: 10px; margin: 10px 0; }
+
+/* ===== Перетаскивание и большие области ===== */
+[data-drag] { touch-action: none; -webkit-user-select: none; user-select: none; cursor: grab; }
+body.is-dragging, body.is-dragging * { cursor: grabbing !important; -webkit-user-select: none; user-select: none; }
+.tile { transition: margin .14s ease; }
+.tile.dragging { opacity: .22; transform: scale(.96); }
+.tile.landing { visibility: hidden; }
+.tile.settle { animation: settle .32s ease-out; }
+.drag-ghost { box-shadow: 0 16px 30px rgba(0, 0, 0, .3) !important; border-color: var(--blue) !important; background: var(--surface) !important;
+  will-change: transform; animation: none !important; }
+@keyframes settle { 0% { transform: scale(1.14); } 55% { transform: scale(.94); } 100% { transform: scale(1); } }
+.tile.ins-before { margin-left: 38px; }
+.oans.ins-end { padding-right: 46px; }
+.oans { transition: padding .14s ease; }
+
+.sort { gap: 16px; }
+.spool .tile { padding: 12px 18px; font-size: 18px; }
+.sgroups { grid-template-columns: 1fr; gap: 14px; }
+.sgroup { min-height: 150px; padding: 14px; border-radius: 22px; display: flex; flex-direction: column; border-width: 3px;
+  background: color-mix(in srgb, var(--surface-2) 55%, transparent); transition: transform .15s, border-color .15s, background .15s; }
+.sgroup.over { border-color: var(--blue); border-style: solid; background: color-mix(in srgb, var(--blue) 16%, transparent); transform: scale(1.02); }
+.sg-title { font-size: 15px; margin-bottom: 10px; }
+.sg-items { flex: 1; align-content: flex-start; gap: 8px; min-height: 70px; }
+.sg-items .tile.small { font-size: 16px; padding: 9px 14px; }
+@media (min-width: 640px) {
+  .sgroups { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+  .sgroup { min-height: 200px; }
+}
+
 /* ===== Мем «6-7» ===== */
 .mascot .p67 { transform-box: fill-box; transform-origin: center; animation: six7 .7s ease-in-out infinite; }
 .mascot .p67-r { animation-delay: -.35s; }

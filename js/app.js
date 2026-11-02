@@ -25,6 +25,9 @@
     theoryRead: [],                                       // темы, где открывали теорию
     tests: {},                                            // результаты тестов: { 'предмет:тема': {best, last, count} }
     remind: { on: true, hour: 19 },                       // напоминания в Android-приложении
+    seen: {},                                             // недавно показанные фиксированные вопросы (для разнообразия)
+    theoryMode: 'short',                                  // какую теорию открывать: short | full
+    snow: null,                                           // снегопад: null — сам (с 1 декабря по 15 января), true/false — выбор игрока
     plusUntil: 0, plusWeek: '', plusGift: false,          // «Мозгобум Плюс»: до когда, неделя бесплатной заморозки, подарок по промокоду
     consent: null,                                        // принятые документы: {v, at}
   });
@@ -239,6 +242,7 @@
     { id: 'excellent', icon: '🅰️', title: 'Отличник', text: 'Сдай экзамен на 5', test: () => S.fives >= 1 },
     { id: 'final', icon: '🎓', title: 'Выпускник', text: 'Сдай итоговый экзамен', test: () => S.finals >= 1 },
     { id: 'all', icon: '🎓', title: 'Универсал', text: 'Уроки по всем предметам', test: () => MB.subjects.every(s => S.subjPlayed[s.id]) },
+    { id: 'ny', icon: '🎄', title: 'Новогоднее настроение', text: 'Собери 3 новогодние вещи', test: () => S.owned.filter(id => MB.ITEMS[id] && MB.ITEMS[id].ny).length >= 3 },
     { id: 'rich', icon: '💎', title: 'Богач', text: 'Накопи 500 кристаллов', test: () => S.gems >= 500 },
     { id: 'fashion', icon: '👗', title: 'Модник', text: 'Собери 5 вещей для Бума', test: () => S.owned.filter(id => id !== 'purple').length >= 5 },
     { id: 'treasure', icon: '🗝️', title: 'Кладоискатель', text: 'Открой золотой сундук', test: () => S.play.opened.includes('gold') },
@@ -285,12 +289,29 @@
 
   // ---------- Вопросы ----------
   const hash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
-  const qid = q => hash(q.type + q.q + JSON.stringify(q.opts ? q.opts[q.a] : [q.a, q.pairs, q.items, q.tokens, q.words]));
+  const qid = q => hash(q.type + q.q + JSON.stringify(q.opts ? q.opts[q.a] : [q.a, q.pairs, q.items, q.tokens, q.words, q.pool]));
+
+  // Вариативность: большие пулы раскрываются в обычное задание при каждом показе,
+  // чтобы нельзя было выучить «железо — вещество, стакан — тело» наизусть.
+  //   sort   {pool:[[текст, группа]…], per:N}  — по N случайных элементов из каждой группы
+  //   match  {pool:[[слева, справа]…], take:N} — N случайных пар
+  //   choice {opts:[верный, …много неверных], pick:N} — верный + (N−1) случайных неверных
+  const sample = (arr, n) => shuffle(arr).slice(0, n);
+  function materialize(q) {
+    if (q.type === 'sort' && q.pool) {
+      const per = q.per || 2;
+      q.items = q.groups.flatMap((_, gi) => sample(q.pool.filter(p => p[1] === gi), per));
+      delete q.pool;
+    }
+    if (q.type === 'match' && q.pool) { q.pairs = sample(q.pool, q.take || 4); delete q.pool; }
+    if (q.type === 'choice' && q.pick && q.opts.length > q.pick) q.opts = [q.opts[0], ...sample(q.opts.slice(1), q.pick - 1)];
+  }
 
   function prep(clean) {
     const q = JSON.parse(JSON.stringify(clean));
     q._raw = JSON.stringify(clean);
     q._id = qid(clean);
+    materialize(q);
     if (q.type === 'choice') q._order = shuffle(q.opts.map((_, i) => i));
     if (q.type === 'match') { q._left = shuffle(q.pairs.map((_, i) => i)); q._right = shuffle(q.pairs.map((_, i) => i)); }
     if (q.type === 'sort') q._items = shuffle(q.items.map((_, i) => i));
@@ -304,18 +325,26 @@
     return q;
   }
 
+  // Сначала показываем то, чего игрок ещё не видел (запоминаем последние 400 фиксированных вопросов),
+  // а генераторы и вопросы с пулами всегда считаются «свежими» — они каждый раз разные.
+  const SEEN_MAX = 400;
   function buildQuestions(pool, count) {
-    const out = [], seen = new Set();
+    const out = [], used = new Set(), rec = S.seen || (S.seen = {});
+    const fixed = it => typeof it === 'object' && !it.pool && !it.pick;
+    const fresh = it => (fixed(it) ? !rec[qid(it)] : true);
     let bag = [], guard = 0;
     while (out.length < count && guard++ < count * 25) {
-      if (!bag.length) bag = shuffle(pool);
+      if (!bag.length) { bag = shuffle(pool); bag.sort((a, b) => fresh(a) - fresh(b)); }   // pop берёт с конца: свежие — первыми
       const item = bag.pop();
       const q = typeof item === 'function' ? item() : item;
       const id = qid(q);
-      if (seen.has(id)) continue;
-      seen.add(id);
+      if (used.has(id)) continue;
+      used.add(id);
+      if (typeof item === 'object' && fixed(item)) rec[id] = Date.now();
       out.push(prep(q));
     }
+    const ids = Object.keys(rec);
+    if (ids.length > SEEN_MAX) ids.sort((a, b) => rec[a] - rec[b]).slice(0, ids.length - SEEN_MAX).forEach(k => delete rec[k]);
     return out;
   }
 
@@ -622,10 +651,14 @@
     const u = subj && subj.units.find(x => x.id === theoryOpen);
     if (!u) return '';
     const first = !S.theoryRead.includes(u.id);
+    const T2 = MB.theory || { short: {}, full: {} };
+    const hasFull = !!T2.full[u.id], mode = hasFull && S.theoryMode === 'full' ? 'full' : 'short';
+    const html = mode === 'full' ? T2.full[u.id] : (T2.short[u.id] || u.theory);
     return `<div class="sheet-bg" data-act="theory-close"><div class="sheet theory" data-act="noop" style="--c:${subj.color};--cd:${subj.dark}">
       <div class="kicker">📖 Теория · ${subj.title}</div>
       <h2>${u.title}</h2>
-      <div class="theory-body">${u.theory}</div>
+      ${hasFull ? `<div class="seg theory-tabs"><button class="${mode === 'short' ? 'on' : ''}" data-act="theory-mode" data-m="short">⚡ Кратко</button><button class="${mode === 'full' ? 'on' : ''}" data-act="theory-mode" data-m="full">📚 Подробно</button></div>` : ''}
+      <div class="theory-body">${html}</div>
       <button class="btn big" data-act="theory-read" data-u="${u.id}">${first ? 'Понятно! +5 💎' : 'Понятно!'}</button>
     </div></div>`;
   }
@@ -657,7 +690,8 @@
     const subj = subjById(S.subject), path = pathOf(subj);
     const curIdx = path.findIndex(e => !stars(e.key));
     let html = `<div class="subj-tabs">${MB.subjects.map(s => `<button class="subj ${s.id === subj.id ? 'active' : ''}" style="--c:${s.color};--cd:${s.dark}" data-act="subj" data-s="${s.id}"><span>${s.icon}</span>${s.title}</button>`).join('')}</div>
-      <div class="hello"><div class="hello-m">${MB.mascot(S.lastDay === today() ? 'happy' : 'wow', S.look)}</div><div class="bubble">${mascotLine()}</div></div>
+      <div class="hello"><div class="hello-m" data-act="boom-talk" title="Потрогай Бума">${MB.mascot(S.lastDay === today() ? 'happy' : 'wow', S.look)}</div><div class="bubble">${mascotLine()}</div></div>
+      ${nyCard()}
       <div class="map-chests">${chestWidget()}</div>
       ${x2Left() ? `<div class="x2-banner">⚡ Двойной опыт активен ещё ${Math.ceil(x2Left() / 60000)} мин</div>` : ''}`;
     [...subj.units, finalUnit(subj)].forEach((u, ui) => {
@@ -666,7 +700,7 @@
       const isFinal = ui === subj.units.length;
       html += `<section class="unit ${isFinal ? 'final' : ''}" data-unit-id="${u.id}" data-biome="${MB.scene.biomeFor(ui, isFinal)}" style="--c:${subj.color};--cd:${subj.dark}">
         <div class="unit-head"><div><div class="kicker">${isFinal ? '🎓 Финал' : 'Тема ' + (ui + 1)}</div><h3>${u.title}</h3><p>${u.desc}</p></div><div class="unit-prog">${done}/${items.length}</div></div>
-        ${u.theory ? `<button class="theory-cloud ${S.theoryRead.includes(u.id) ? 'read' : ''}" data-act="theory" data-u="${u.id}">
+        ${u.theory || (MB.theory && MB.theory.short[u.id]) ? `<button class="theory-cloud ${S.theoryRead.includes(u.id) ? 'read' : ''}" data-act="theory" data-u="${u.id}">
           <span>📖</span>${S.theoryRead.includes(u.id) ? 'Теория' : 'Теория · +5 💎'}</button>` : ''}
         <div class="path">`;
       items.forEach(e => {
@@ -804,13 +838,13 @@
     if (q.type === 'sort') {
       const s = L.sort, free = q._items.filter(i => !(i in s.place));
       return `<div class="sort">
-        <div class="spool">${free.length ? free.map(i => `<button class="tile ${s.sel === i ? 'sel' : ''}" data-act="sitem" data-i="${i}">${q.items[i][0]}</button>`).join('')
+        <div class="spool">${free.length ? free.map(i => `<button class="tile ${s.sel === i ? 'sel' : ''}" data-act="sitem" data-drag="pool" data-i="${i}">${q.items[i][0]}</button>`).join('')
           : '<span class="ohint">Все разложены — жми «Проверить»</span>'}</div>
         <div class="sgroups">${q.groups.map((g, gi) => `<div class="sgroup ${s.sel !== null ? 'armed' : ''}" data-act="sgroup" data-g="${gi}">
           <div class="sg-title">${g}</div>
-          <div class="sg-items">${q._items.filter(i => s.place[i] === gi).map(i => `<button class="tile small" data-act="sback" data-i="${i}">${q.items[i][0]}</button>`).join('')}</div>
+          <div class="sg-items">${q._items.filter(i => s.place[i] === gi).map(i => `<button class="tile small" data-act="sback" data-drag="placed" data-i="${i}">${q.items[i][0]}</button>`).join('')}</div>
         </div>`).join('')}</div>
-        <span class="ohint">Нажми на слово, потом на группу</span>
+        <span class="ohint">Перетащи слово пальцем в нужную область (или нажми на слово, потом на область)</span>
       </div>`;
     }
     if (q.type === 'commas') {
@@ -819,10 +853,12 @@
         <span class="ohint">Нажимай между словами, чтобы поставить или убрать запятую</span>`;
     }
     // order
-    const hint = q.type === 'formula' ? 'Собери формулу из символов снизу' : q.type === 'dictation' ? 'Нажимай на слова по порядку' + (q.extra ? ' — есть лишние' : '') : 'Нажимай на карточки снизу по порядку';
+    const hint = q.type === 'formula' ? 'Собери формулу: нажимай или перетаскивай символы снизу' : q.type === 'dictation' ? 'Нажимай на слова или перетаскивай их' + (q.extra ? ' — есть лишние' : '') : 'Нажимай на карточки снизу по порядку';
     return `<div class="order ${q.type}">
-      <div class="oans">${L.ord.length ? L.ord.map((bi, k) => `<button class="tile" data-act="oa" data-k="${k}">${q._bank[bi]}</button>`).join('') : `<span class="ohint">${hint}</span>`}</div>
-      <div class="obank">${q._bank.map((w, bi) => `<button class="tile ${L.ord.includes(bi) ? 'used' : ''}" data-act="ob" data-i="${bi}">${w}</button>`).join('')}</div>
+      <div class="oans">${L.ord.length ? L.ord.map((bi, k) => `<button class="tile" data-act="oa" data-drag="row" data-k="${k}" data-bi="${bi}">${q._bank[bi]}</button>`).join('') : `<span class="ohint">${hint}</span>`}</div>
+      <div class="obank">${q._bank.map((w, bi) => (L.ord.includes(bi) ? `<button class="tile used" data-i="${bi}" tabindex="-1">${w}</button>`
+        : `<button class="tile" data-act="ob" data-drag="bank" data-i="${bi}">${w}</button>`)).join('')}</div>
+      ${L.ord.length > 1 ? '<span class="ohint">Слова в строке ответа можно перетаскивать, чтобы поменять местами</span>' : ''}
     </div>`;
   }
   function canCheck(q) {
@@ -853,7 +889,7 @@
         ${!ok && L.mode === 'lesson' ? '<div class="fb-note">Вопрос вернётся в конце урока и попадёт в «Ошибки».</div>' : ''}
         ${!ok && L.mode === 'exam' ? '<div class="fb-note">Ошибка попадёт в «Работу над ошибками».</div>' : ''}
       </div>
-      <button class="btn big next-btn ${ok ? '' : 'red'}" data-act="next">${out ? 'Ой…' : 'Дальше'}<i class="auto-bar" style="animation-duration:${L.wait}ms"></i></button>
+      <button class="btn big next-btn ${ok ? '' : 'red'}" data-act="next">${out ? 'Ой…' : 'Дальше'}${ok && L.wait ? `<i class="auto-bar" style="animation-duration:${L.wait}ms"></i>` : ''}</button>
     </div>`;
   }
   function refreshFoot() {
@@ -977,14 +1013,16 @@
       MB.sound.play('combo');
     }
     refreshBoosts();
-    // автопереход: на правильный ответ быстро, на ошибку — успеть прочитать объяснение
-    L.wait = ok ? 1200 : Math.min(9000, 3500 + (q.ex || '').length * 30);
+    // Правильный ответ — быстрый автопереход. Ошибка — только по кнопке «Дальше»: надо успеть прочитать разбор.
+    L.wait = ok ? 1200 : 0;
     refreshFoot();
     lockInput();   // двойной клик по «Проверить» не должен сразу нажать «Дальше»
-    const cur = L;
-    // пока открыто окно (например, «Выйти из урока?») — урок не листаем
-    const tick = () => { if (L !== cur || L.state !== 'feedback') return; if (dialog) { L.timer = setTimeout(tick, 400); return; } next(); };
-    L.timer = setTimeout(tick, L.wait);
+    if (ok) {
+      const cur = L;
+      // пока открыто окно (например, «Выйти из урока?») — урок не листаем
+      const tick = () => { if (L !== cur || L.state !== 'feedback') return; if (dialog) { L.timer = setTimeout(tick, 400); return; } next(); };
+      L.timer = setTimeout(tick, L.wait);
+    }
   }
   function next() {
     if (!L || L.state !== 'feedback') return;
@@ -1099,6 +1137,7 @@
         <div class="rtile t-acc"><span>Точность</span><b>${r.acc}%</b></div>
         <div class="rtile t-time"><span>Время</span><b>${mm}:${ss}</b></div>
       </div>
+      <div class="boom-quote"><b>Бум:</b> ${esc(boomQuote())}</div>
       <div class="earned">+${r.gems} 💎 ${L.mode === 'review' ? ' · +1 ❤️' : ''} ${L.maxCombo >= 5 ? ` · лучшее комбо 🔥${L.maxCombo}` : ''}</div>
       ${r.doubled ? '<div class="ach-pop x2">⚡ Двойной опыт сработал!</div>' : ''}
       ${r.chestNew ? '<div class="ach-pop chest">🎁 Ты наиграл на сундук! Открой его на карте</div>' : ''}
@@ -1300,7 +1339,7 @@
         const look = setLook(set);
         const worn = set.items.every(i => S.look[MB.ITEMS[i].slot] === i);
         const price = setPrice(set);
-        return `<div class="card hat set ${worn ? 'worn' : ''}"><div class="hat-m">${MB.mascot('happy', look)}</div><b>${set.icon} ${set.title}</b>
+        return `<div class="card hat set ${worn ? 'worn' : ''}">${set.ny ? '<span class="ny-tag">❄️ Новый год</span>' : ''}<div class="hat-m">${MB.mascot('happy', look)}</div><b>${set.icon} ${set.title}</b>
           ${price ? `<button class="btn small gold" data-act="buy-set" data-set="${id}" ${S.gems < price ? 'disabled' : ''}>${price} 💎 <s>${Math.round(price / 0.8)}</s></button>`
             : `<button class="btn small ${worn ? 'ghost' : ''}" data-act="wear-set" data-set="${id}" ${worn ? 'disabled' : ''}>${worn ? 'Надето' : 'Надеть образ'}</button>`}
         </div>`;
@@ -1319,7 +1358,7 @@
         else if (it.referral) btn = '<span class="rare-note">🤝 за приглашение друга</span>';
         else if (it.combo67) btn = '<span class="rare-note">🔥 ответь правильно 7 раз подряд</span>';
         else btn = `<button class="btn small gold" data-act="buy" data-item="item:${id}" ${S.gems < it.price ? 'disabled' : ''}>${it.price} 💎</button>`;
-        return `<div class="card hat ${worn ? 'worn' : ''} ${it.rare || it.secret ? 'rare' : ''}">${it.secret ? '<span class="rare-tag secret">секрет</span>' : it.rare ? '<span class="rare-tag">редкое</span>' : ''}
+        return `<div class="card hat ${worn ? 'worn' : ''} ${it.rare || it.secret ? 'rare' : ''}">${it.secret ? '<span class="rare-tag secret">секрет</span>' : it.rare ? '<span class="rare-tag">редкое</span>' : ''}${it.ny ? '<span class="ny-tag">❄️ Новый год</span>' : ''}
           <div class="hat-m">${MB.mascot('happy', preview)}</div><b>${it.title}</b>${btn}</div>`;
       }).join('')}</div>`;
   }
@@ -1377,6 +1416,7 @@
       <div class="card settings">
         <div class="set-row"><span>Цель дня</span><div class="seg">${[[10, 'Легко'], [20, 'Норм'], [30, 'Серьёзно'], [50, 'Жёстко']].map(([g, t]) => `<button class="${S.goal === g ? 'on' : ''}" data-act="goal" data-g="${g}">${t}<small>${g} XP</small></button>`).join('')}</div></div>
         <div class="set-row"><span>Звук</span><button class="toggle ${S.sound ? 'on' : ''}" data-act="sound" aria-label="Звук"><i></i></button></div>
+        <div class="set-row"><span>❄️ Снегопад<small class="muted" style="display:block">Сам включается с 1 декабря по 15 января</small></span><button class="toggle ${snowOn() ? 'on' : ''}" data-act="snow" aria-label="Снегопад"><i></i></button></div>
         ${isApp() ? `<div class="set-row"><span>Напоминания<small class="muted" style="display:block">Бум сам напишет вечером, когда-то между 16 и 21</small></span><button class="toggle ${S.remind.on ? 'on' : ''}" data-act="remind" aria-label="Напоминания"><i></i></button></div>`
         : `<div class="set-row"><span>Приложение для Android<small class="muted" style="display:block">с напоминаниями о серии</small></span><a class="btn small" data-act="apk" href="https://github.com/maximlexin/mozgobum/releases/latest/download/mozgobum.apk">📱 Скачать</a></div>`}
         ${accountRow()}
@@ -1535,6 +1575,7 @@
     const qKey = view === 'lesson' && L ? L.idx : null;
     if (view !== lastView || qKey !== lastQuestion) lockInput();
     lastView = view; lastQuestion = qKey;
+    updateSnow();
     if (!S.onboarded) { document.body.className = 'v-onboard'; app.innerHTML = onboardView(); return; }
     if (!S.consent && MB.CONFIG.features.legal) { document.body.className = 'v-onboard'; app.innerHTML = consentView(); return; }
     if (view === 'lesson' && L) { app.innerHTML = lessonView(); return; }
@@ -1596,6 +1637,19 @@
     },
     theory: el => { theoryOpen = el.dataset.u; render(); MB.sound.play('tap'); },
     'theory-close': () => { theoryOpen = null; render(); },
+    'boom-talk': el => {
+      const b = $('.bubble'); if (b) b.textContent = boomQuote();
+      el.classList.remove('hop'); void el.offsetWidth; el.classList.add('hop');
+      el.innerHTML = MB.mascot('wow', S.look); setTimeout(() => { if (el.isConnected) el.innerHTML = MB.mascot('happy', S.look); }, 1200);
+      MB.sound.play('tap');
+    },
+    snow: () => { S.snow = !snowOn(); save(); updateSnow(); render(); },
+    'theory-mode': el => {
+      S.theoryMode = el.dataset.m; save();
+      const body = $('.theory-body'); if (body) body.scrollTop = 0;
+      render();
+      MB.sound.play('tap');
+    },
     'theory-read': el => {
       if (!S.theoryRead.includes(el.dataset.u)) { S.theoryRead.push(el.dataset.u); S.gems += 5; toast('📖 +5 💎 за изучение теории'); MB.sound.play('coin'); }
       theoryOpen = null; save(); render();
@@ -1859,6 +1913,7 @@
     const el = e.target.closest('[data-act]');
     if (!el || el.disabled) return;
     if (performance.now() < inputLockUntil) return;   // экран только что сменился
+    if (performance.now() < clickSuppressUntil) return;   // это «click» после перетаскивания
     const fn = ACT[el.dataset.act];
     if (fn) fn(el, e);
   });
@@ -1893,6 +1948,205 @@
       if (btn && !btn.disabled) ACT.opt(btn);
     }
   });
+
+  // ---------- Новый год и «приколы» ----------
+  const inSeason = () => { const d = new Date(); return d.getMonth() === 11 || (d.getMonth() === 0 && d.getDate() <= 15); };   // 1 дек — 15 янв
+  const snowOn = () => (S.snow === null || S.snow === undefined ? inSeason() : !!S.snow);
+  function updateSnow() {
+    let el = $('#snow');
+    if (!snowOn()) { if (el) el.remove(); return; }
+    if (!el) {
+      el = document.createElement('div'); el.id = 'snow'; el.setAttribute('aria-hidden', 'true');
+      const flakes = ['❄', '❅', '❆'];
+      for (let n = 0; n < 26; n++) {
+        const i = document.createElement('i');
+        i.textContent = flakes[n % 3];
+        i.style.cssText = `left:${Math.random() * 100}%;font-size:${10 + Math.random() * 14}px;animation-duration:${7 + Math.random() * 8}s;animation-delay:${-Math.random() * 14}s;--dx:${-40 + Math.random() * 100}px`;
+        el.appendChild(i);
+      }
+      document.body.appendChild(el);
+    }
+    el.style.display = view === 'lesson' ? 'none' : '';   // во время урока не отвлекаем
+  }
+  function nyCard() {
+    const n = new Date(), m = n.getMonth(), day = n.getDate();
+    if (m === 0 && day <= 7) return '<div class="card ny-count"><span>🎉</span><div>С Новым годом!<br><small class="muted">Новогодние наряды ждут в магазине</small></div></div>';
+    if (!(m === 11 || (m === 10 && day >= 20))) return '';
+    const days = Math.ceil((new Date(n.getFullYear() + 1, 0, 1) - n) / DAY);
+    return `<div class="card ny-count"><span>🎄</span><div>До Нового года ${days} ${plural(days, ['день', 'дня', 'дней'])}<br><small class="muted">Новогодние наряды уже в магазине</small></div></div>`;
+  }
+  const BOOM_QUOTES = [
+    'Я не ленивый, я в режиме энергосбережения. А ты — в режиме прокачки! 🔋',
+    'Мозг — единственный орган, который становится сильнее от нагрузки. Ну, ещё бицепс 💪',
+    'Если долго смотреть на формулу, она посмотрит в ответ. Лучше реши её 😏',
+    'Ошибки — это правильные ответы, которые ещё не нашли дорогу домой 🏠',
+    'Ньютон открыл закон тяготения, а ты — кнопку «Дальше». Тоже достижение! 🍎',
+    'Что общего у диффузии и моего кармана с печеньками? Всё быстро распространяется 🍪',
+    'Сила трения помогает ходить. А сила воли помогает проходить уроки 💥',
+    'Мхи не имеют корней, зато имеют терпение. Бери пример! 🌿',
+    'Гипотенуза — самая длинная сторона. И она этим очень гордится 📐',
+    'Деепричастие — это когда делаешь два дела сразу. Например, решаешь и улыбаешься 😄',
+    'Скорость = путь / время. А продуктивность = урок / «потом» 🚀',
+    'Лучше сегодня 5 минут, чем в воскресенье 5 часов 😅',
+    'Не сошёлся ответ? Проверь знак. В 90% случаев виноват минус ➖',
+    'Бактерии размножаются делением. А игрой лучше делиться с друзьями 🤝',
+    'Знаешь, чем отличается плотность от плотного обеда? Плотность измеряется в кг/м³ 🍔',
+    'Закон Архимеда: тело, погружённое в ванну, вызывает вопрос «а кто воду налил?» 🛁',
+    'Н или НН? Если сомневаешься — зайди в теорию, она не кусается 📖',
+    'Я бы тоже пошёл на экзамен, но у меня лапки. Зато у тебя — пятёрка! ✋',
+  ];
+  const boomQuote = () => pick(BOOM_QUOTES);
+
+  // ---------- Перетаскивание пальцем ----------
+  // data-drag: pool — слово в пуле задания «по группам»; placed — слово уже лежит в области;
+  //            bank — слово в банке (диктант/формула/порядок); row — слово в строке ответа (меняем местами).
+  // Плитка тянется за пальцем («призрак»), область под пальцем подсвечивается, при отпускании плитка с анимацией садится на место.
+  let clickSuppressUntil = 0;   // после перетаскивания браузер шлёт «click» — глушим его
+  (function initDrag() {
+    let d = null, scrollRaf = 0;
+    const rectOf = el => el.getBoundingClientRect();
+
+    // ближайшая область «по группам»: подходит и «примерно туда» — в пределах 64 px от границы
+    function zoneAt(x, y) {
+      let best = null, bd = Infinity;
+      document.querySelectorAll('.sgroup').forEach(z => {
+        const r = rectOf(z), dd = Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom));
+        if (dd < bd) { bd = dd; best = z; }
+      });
+      return bd <= 64 ? best : null;
+    }
+    // куда вставить слово в строке ответа: перед первой плиткой, которая «правее/ниже» пальца
+    function rowIndex(x, y, dragEl) {
+      const row = $('.oans');
+      if (!row) return { over: false, idx: 0, tiles: [] };
+      const rr = rectOf(row);
+      const over = x >= rr.left - 24 && x <= rr.right + 24 && y >= rr.top - 24 && y <= rr.bottom + 24;
+      const tiles = [...row.querySelectorAll('.tile[data-drag="row"]')].filter(t => t !== dragEl);
+      let idx = tiles.length;
+      for (let i = 0; i < tiles.length; i++) {
+        const r = rectOf(tiles[i]);
+        if (y < r.top || (y <= r.bottom && x < r.left + r.width / 2)) { idx = i; break; }
+      }
+      return { over, idx, tiles, row };
+    }
+    function clearMarks() {
+      document.querySelectorAll('.ins-before').forEach(t => t.classList.remove('ins-before'));
+      document.querySelectorAll('.ins-end, .sgroup.over').forEach(t => t.classList.remove('ins-end', 'over'));
+    }
+    function hover(x, y) {
+      clearMarks();
+      if (d.kind === 'pool' || d.kind === 'placed') { const z = zoneAt(x, y); if (z) z.classList.add('over'); return; }
+      const r = rowIndex(x, y, d.el);
+      d.over = r.over; d.idx = r.idx;
+      if (!r.over) return;
+      if (r.idx < r.tiles.length) r.tiles[r.idx].classList.add('ins-before'); else r.row.classList.add('ins-end');
+    }
+    function autoscroll() {
+      if (!d || !d.started) return;
+      const h = innerHeight;
+      let v = 0;
+      if (d.y < 90) v = -(90 - d.y) / 5; else if (d.y > h - 90) v = (d.y - (h - 90)) / 5;
+      if (v) { scrollBy(0, v); hover(d.x, d.y); }
+      scrollRaf = requestAnimationFrame(autoscroll);
+    }
+    function startDrag() {
+      d.started = true;
+      MB.sound.play('tap');
+      const g = d.el.cloneNode(true);
+      g.removeAttribute('data-act'); g.removeAttribute('data-drag');
+      g.className = d.el.className.replace(/\b(sel|dragging)\b/g, '') + ' drag-ghost';
+      Object.assign(g.style, { position: 'fixed', left: d.r0.left + 'px', top: d.r0.top + 'px', width: d.r0.width + 'px', height: d.r0.height + 'px',
+        margin: '0', zIndex: 200, pointerEvents: 'none', transition: 'none' });
+      document.body.appendChild(g);
+      d.ghost = g;
+      d.el.classList.add('dragging');
+      document.body.classList.add('is-dragging');
+      scrollRaf = requestAnimationFrame(autoscroll);
+    }
+    // плитка «садится»: призрак плавно летит к настоящему месту, потом исчезает
+    function land(cur, target) {
+      const g = cur.ghost;
+      if (!g) return;
+      if (!target) { g.remove(); return; }
+      target.classList.add('landing');
+      const r = rectOf(target);
+      g.style.transition = 'transform .26s cubic-bezier(.2,.9,.3,1.25), width .26s, height .26s';
+      g.style.width = r.width + 'px'; g.style.height = r.height + 'px';
+      g.style.transform = `translate(${r.left - cur.r0.left}px, ${r.top - cur.r0.top}px) scale(1) rotate(0deg)`;
+      let done = false;
+      const fin = () => {
+        if (done) return; done = true;
+        g.remove(); target.classList.remove('landing'); target.classList.add('settle');
+        setTimeout(() => target.classList.remove('settle'), 320);
+      };
+      g.addEventListener('transitionend', fin, { once: true });
+      setTimeout(fin, 380);
+    }
+    function snapBack(cur) {
+      const g = cur.ghost;
+      if (!g) return;
+      g.style.transition = 'transform .24s cubic-bezier(.3,.9,.4,1)';
+      g.style.transform = 'translate(0px, 0px) scale(1) rotate(0deg)';
+      let done = false;
+      const fin = () => { if (done) return; done = true; g.remove(); cur.el.classList.remove('dragging'); };
+      g.addEventListener('transitionend', fin, { once: true });
+      setTimeout(fin, 340);
+    }
+    function drop(cur, x, y, cancelled) {
+      if (cur.kind === 'pool' || cur.kind === 'placed') {
+        const z = cancelled ? null : zoneAt(x, y);
+        if (!z) { snapBack(cur); return; }
+        L.sort.place[cur.id] = Number(z.dataset.g); L.sort.sel = null;
+        MB.sound.play('tap');
+        refreshBody();
+        land(cur, $(`.sg-items .tile[data-i="${cur.id}"]`));
+        return;
+      }
+      const r = cancelled ? { over: false } : rowIndex(x, y, cur.el);
+      if (r.over) {
+        const without = L.ord.filter(b => b !== cur.id);
+        // r.tiles — плитки строки без перетаскиваемой, их порядок совпадает с without
+        without.splice(Math.min(r.idx, without.length), 0, cur.id);
+        L.ord = without;
+        MB.sound.play('tap');
+        refreshBody();
+        land(cur, $(`.oans .tile[data-bi="${cur.id}"]`));
+      } else if (cur.kind === 'row') {
+        // вытащили из строки ответа — слово возвращается в банк
+        L.ord = L.ord.filter(b => b !== cur.id);
+        refreshBody();
+        land(cur, $(`.obank .tile[data-i="${cur.id}"]`));
+      } else snapBack(cur);
+    }
+
+    document.addEventListener('pointerdown', e => {
+      if (d || e.button > 0 || !L || L.state !== 'answer' || dialog) return;
+      const el = e.target.closest('[data-drag]');
+      if (!el) return;
+      d = { el, kind: el.dataset.drag, id: Number(el.dataset.bi ?? el.dataset.i), pid: e.pointerId, sx: e.clientX, sy: e.clientY,
+        x: e.clientX, y: e.clientY, started: false, ghost: null, r0: rectOf(el) };
+    });
+    document.addEventListener('pointermove', e => {
+      if (!d || e.pointerId !== d.pid) return;
+      const dx = e.clientX - d.sx, dy = e.clientY - d.sy;
+      if (!d.started) { if (Math.hypot(dx, dy) < 7) return; startDrag(); }
+      d.x = e.clientX; d.y = e.clientY;
+      d.ghost.style.transform = `translate(${dx}px, ${dy}px) scale(1.1) rotate(${Math.max(-8, Math.min(8, dx / 14))}deg)`;
+      hover(d.x, d.y);
+    });
+    const end = e => {
+      if (!d || e.pointerId !== d.pid) return;
+      const cur = d; d = null;
+      cancelAnimationFrame(scrollRaf);
+      if (!cur.started) return;   // обычное нажатие — его обработает click
+      clickSuppressUntil = performance.now() + 350;
+      document.body.classList.remove('is-dragging');
+      clearMarks();
+      drop(cur, e.clientX, e.clientY, e.type === 'pointercancel');
+    };
+    document.addEventListener('pointerup', end);
+    document.addEventListener('pointercancel', end);
+  })();
 
   // ---------- Свои окна вместо prompt/confirm/alert ----------
   // Системные окна не показываются во встроенных браузерах и части WebView — кнопки «молча» не работали.

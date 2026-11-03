@@ -804,10 +804,65 @@
         <div class="qtype">${label}${q.title || titles[q.type]}</div>
         <div class="q-head"><div class="q-mascot">${MB.mascot('happy', S.look)}</div><h2 class="qtext">${q.q}</h2></div>
         <div class="qbody">${bodyHtml(q)}</div>
+        <div class="pad-box">${padHtml()}</div>
       </div>
       <div class="lesson-foot" id="foot">${footHtml(q)}</div>
     </div>`;
   }
+  // ---------- Черновик: поле для записей и чертежей под заданием ----------
+  const pad = { open: false, key: '', url: '', color: '', erase: false };
+  const padKey = () => (L ? L.start + ':' + L.idx : '');
+  const PAD_COLORS = ['', '#ff4b4b', '#1cb0f6', '#58cc02'];
+  function padHtml() {
+    if (!pad.open) return '<button class="pad-toggle" data-act="pad">✏️ Черновик</button>';
+    return `<button class="pad-toggle on" data-act="pad">✏️ Скрыть черновик</button>
+      <div class="pad"><canvas class="pad-canvas"></canvas>
+        <div class="pad-tools">
+          ${PAD_COLORS.map(c => `<button class="pad-color ${!pad.erase && pad.color === c ? 'on' : ''}" data-act="pad-color" data-c="${c}" style="${c ? `background:${c}` : ''}" aria-label="Цвет"></button>`).join('')}
+          <button class="pad-erase ${pad.erase ? 'on' : ''}" data-act="pad-erase" aria-label="Ластик">🧽</button>
+          <button class="pad-clear" data-act="pad-clear" aria-label="Очистить">🗑️</button>
+        </div></div>`;
+  }
+  function mountPad() {
+    const box = $('.pad-box'); if (box) box.innerHTML = padHtml();
+    const c = $('.pad-canvas'); if (!c) return;
+    const w = c.clientWidth, h = c.clientHeight, dpr = Math.min(window.devicePixelRatio || 1, 2);
+    c.width = w * dpr; c.height = h * dpr;
+    const ctx = c.getContext('2d'); ctx.scale(dpr, dpr);
+    if (pad.key !== padKey()) { pad.key = padKey(); pad.url = ''; }
+    if (pad.url) { const img = new Image(); img.onload = () => ctx.drawImage(img, 0, 0, w, h); img.src = pad.url; }
+  }
+  (function initPad() {
+    let d = null;
+    const pos = (c, e) => { const r = c.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    const seg = (c, a, b) => {
+      const ctx = c.getContext('2d');
+      ctx.lineCap = ctx.lineJoin = 'round';
+      ctx.globalCompositeOperation = pad.erase ? 'destination-out' : 'source-over';
+      ctx.strokeStyle = pad.color || getComputedStyle(c).color;
+      ctx.lineWidth = pad.erase ? 22 : 3;
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    };
+    document.addEventListener('pointerdown', e => {
+      const c = e.target.closest && e.target.closest('.pad-canvas');
+      if (!c || e.button > 0) return;
+      d = { c, pid: e.pointerId, last: pos(c, e) };
+      try { c.setPointerCapture(e.pointerId); } catch (_) {}
+      seg(c, d.last, [d.last[0] + 0.01, d.last[1]]);   // точка от касания
+    });
+    document.addEventListener('pointermove', e => {
+      if (!d || e.pointerId !== d.pid) return;
+      const p = pos(d.c, e); seg(d.c, d.last, p); d.last = p;
+    });
+    const end = e => {
+      if (!d || e.pointerId !== d.pid) return;
+      try { pad.url = d.c.toDataURL(); pad.key = padKey(); } catch (_) {}
+      d = null;
+    };
+    document.addEventListener('pointerup', end);
+    document.addEventListener('pointercancel', end);
+  })();
+
   function bodyHtml(q) {
     if (q.type === 'choice') {
       const canFifty = q.opts.length >= 3 && L.mode === 'lesson';
@@ -1140,7 +1195,7 @@
       <div class="boom-quote"><b>Бум:</b> ${esc(boomQuote())}</div>
       <div class="earned">+${r.gems} 💎 ${L.mode === 'review' ? ' · +1 ❤️' : ''} ${L.maxCombo >= 5 ? ` · лучшее комбо 🔥${L.maxCombo}` : ''}</div>
       ${r.doubled ? '<div class="ach-pop x2">⚡ Двойной опыт сработал!</div>' : ''}
-      ${r.chestNew ? '<div class="ach-pop chest">🎁 Ты наиграл на сундук! Открой его на карте</div>' : ''}
+      ${r.chestNew ? '<div class="ach-pop chest-note">🎁 Ты наиграл на сундук! Открой его на карте</div>' : ''}
       ${r.fresh.map(a => `<div class="ach-pop">${a.icon} Достижение: <b>${a.title}</b> · +10 💎</div>`).join('')}
       ${test ? `<button class="btn big blue" data-act="tretry">🔄 Решить ещё раз</button>` : ''}
       <button class="btn big" data-act="res-continue">${test ? 'К тестам' : 'Продолжить'}</button>
@@ -1578,7 +1633,7 @@
     updateSnow();
     if (!S.onboarded) { document.body.className = 'v-onboard'; app.innerHTML = onboardView(); return; }
     if (!S.consent && MB.CONFIG.features.legal) { document.body.className = 'v-onboard'; app.innerHTML = consentView(); return; }
-    if (view === 'lesson' && L) { app.innerHTML = lessonView(); return; }
+    if (view === 'lesson' && L) { app.innerHTML = lessonView(); mountPad(); return; }
     if (view === 'result' && L) { app.innerHTML = resultView(); countUp(); return; }
     if (view === 'streak' && L) { app.innerHTML = streakView(); return; }
     if (view === 'fail') { app.innerHTML = failView(); return; }
@@ -1644,6 +1699,10 @@
       MB.sound.play('tap');
     },
     snow: () => { S.snow = !snowOn(); save(); updateSnow(); render(); },
+    pad: () => { pad.open = !pad.open; mountPad(); MB.sound.play('tap'); },
+    'pad-color': el => { pad.color = el.dataset.c; pad.erase = false; mountPad(); },
+    'pad-erase': () => { pad.erase = !pad.erase; mountPad(); },
+    'pad-clear': () => { pad.url = ''; mountPad(); },
     'theory-mode': el => {
       S.theoryMode = el.dataset.m; save();
       const body = $('.theory-body'); if (body) body.scrollTop = 0;

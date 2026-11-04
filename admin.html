@@ -79,6 +79,10 @@ th{color:var(--muted);font-weight:600;font-size:12px}
       <div><label>Сколько раз можно (пусто — без лимита)</label><input id="pMax" type="number" min="1" placeholder="например 50"></div>
       <div><label>Действует до (пусто — без срока)</label><input id="pExp" type="date"></div>
     </div>
+    <div class="flex" style="margin-top:10px">
+      <label class="flex" style="margin:0;color:var(--text)"><input type="checkbox" id="pNoAds" style="width:auto"> 🎓 Отключить рекламу (без «Плюса»)</label>
+      <label class="flex" style="margin:0;color:var(--text)"><input type="checkbox" id="pForever" style="width:auto"> ⭐ «Плюс» навсегда (100 лет)</label>
+    </div>
     <label>Наряды в подарок (отметьте нужные)</label>
     <div class="items" id="pItems"></div>
     <div class="flex" style="margin-top:12px"><button id="create">Создать промокод</button></div>
@@ -87,7 +91,7 @@ th{color:var(--muted);font-weight:600;font-size:12px}
 
   <h2>Промокоды</h2>
   <div class="panel tbl"><table id="codes"></table></div>
-  <p class="hint">Код работает один раз на игрока. Промокоды из этого списка действуют, когда у игрока включено облако. Старые «подарочные» коды (бессрочный «Плюс») по-прежнему проверяются в игре без сервера.</p>
+  <p class="hint">Код работает один раз на игрока. Промокоды из этого списка действуют, когда у игрока включено облако. Коды с пометкой «работает в игре без сервера» проверяются в самой игре: их нельзя выключить отсюда, а активации не считаются.</p>
 </div>
 </main>
 
@@ -157,7 +161,8 @@ th{color:var(--muted);font-weight:600;font-size:12px}
   function rewardText(c) {
     const p = [];
     if (c.gems) p.push(c.gems + ' 💎');
-    if (c.plus_days) p.push('Плюс ' + c.plus_days + ' дн.');
+    if (c.no_ads) p.push('🎓 без рекламы');
+    if (c.plus_days >= 36500) p.push('⭐ Плюс навсегда'); else if (c.plus_days) p.push('Плюс ' + c.plus_days + ' дн.');
     Object.keys(c.boosts || {}).forEach(k => p.push({ shield: '🛡️', fifty: '🔮', x2: '⚡' }[k] + '×' + c.boosts[k]));
     (c.items || []).forEach(i => p.push((window.MB && MB.ITEMS && MB.ITEMS[i] && MB.ITEMS[i].title) || i));
     return p.join(', ') || '—';
@@ -166,7 +171,9 @@ th{color:var(--muted);font-weight:600;font-size:12px}
   async function loadCodes() {
     try {
       const d = await api('promo_list');
-      const rows = (d.codes || []).map(c => '<tr><td><span class="code">' + esc(c.code) + '</span><br><small class="hint">' + esc(c.title || '') + '</small></td><td>' + esc(rewardText(c)) + '</td><td>'
+      const rows = (d.codes || []).sort((a, b) => (b.offline ? 1 : 0) - (a.offline ? 1 : 0)).map(c => c.offline
+        ? '<tr><td><span class="code">' + esc(c.code) + '</span><br><small class="hint">' + esc(c.title || '') + '</small></td><td>' + esc(rewardText(c)) + '</td><td colspan="3"><span class="pill on">работает в игре без сервера</span><br><small class="hint">активации не считаются, выключить из панели нельзя</small></td><td class="flex"><button class="ghost" data-c="' + esc(c.code) + '">Копировать</button></td></tr>'
+        : '<tr><td><span class="code">' + esc(c.code) + '</span><br><small class="hint">' + esc(c.title || '') + '</small></td><td>' + esc(rewardText(c)) + '</td><td>'
         + num(c.used) + (c.max_uses ? ' / ' + num(c.max_uses) : ' / ∞') + '</td><td>' + (c.expires_at ? esc(c.expires_at.slice(0, 10)) : '—') + '</td><td><span class="pill ' + (c.active ? 'on' : 'off') + '">' + (c.active ? 'действует' : 'выключен') + '</span></td>'
         + '<td class="flex"><button class="ghost" data-t="' + esc(c.code) + '" data-a="' + (c.active ? '0' : '1') + '">' + (c.active ? 'Выключить' : 'Включить') + '</button><button class="ghost" data-c="' + esc(c.code) + '">Копировать</button><button class="bad" data-d="' + esc(c.code) + '">Удалить</button></td></tr>');
       $('codes').innerHTML = '<tr><th>Код</th><th>Награда</th><th>Использовано</th><th>До</th><th>Статус</th><th></th></tr>' + (rows.join('') || '<tr><td colspan="6">Пока нет промокодов</td></tr>');
@@ -196,7 +203,7 @@ th{color:var(--muted);font-weight:600;font-size:12px}
     if (!code) { msg.className = 'msg err'; msg.textContent = 'Введите код или нажмите «Случайный»'; return; }
     const items = [...$('pItems').querySelectorAll('input:checked')].map(i => i.value);
     const body = {
-      code, title: $('pTitle').value.trim(), gems: +$('pGems').value || 0, plus_days: +$('pPlus').value || 0, items,
+      code, title: $('pTitle').value.trim(), gems: +$('pGems').value || 0, plus_days: $('pForever').checked ? 36500 : (+$('pPlus').value || 0), items, no_ads: $('pNoAds').checked,
       boosts: { shield: +$('pShield').value || 0, fifty: +$('pFifty').value || 0, x2: +$('pX2').value || 0 },
       max_uses: $('pMax').value || null, expires_at: $('pExp').value ? $('pExp').value + 'T23:59:59+03:00' : null
     };
@@ -209,7 +216,7 @@ th{color:var(--muted);font-weight:600;font-size:12px}
       loadCodes();
     } catch (e) {
       const m = { bad_code: 'Код: 4–40 символов, латиница, цифры и дефис', code_exists: 'Такой код уже есть', empty_reward: 'Выберите хотя бы одну награду',
-        bad_reward: 'Проверьте числа в награде', bad_max_uses: 'Лимит использований — целое число от 1', bad_expires: 'Неверная дата' }[e.message];
+        bad_reward: 'Проверьте числа в награде', bad_max_uses: 'Лимит использований — целое число от 1', bad_expires: 'Неверная дата', offline_code: 'Этот код работает без сервера и не меняется из панели' }[e.message];
       msg.className = 'msg err'; msg.textContent = m || e.message;
     }
     $('create').disabled = false;

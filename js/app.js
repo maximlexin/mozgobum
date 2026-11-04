@@ -1963,6 +1963,7 @@
           already: 'Ты уже активировал этот промокод', inactive: 'Промокод сейчас не действует' }[r.status];
         if (msg) { toast(msg); return; }
         T('promo_redeemed', {});
+        if (r.no_ads) { S.noAds = true; save(); }
         await applyRewards(); await syncPlus();
         MB.sound.play('finish'); confetti();
         toast(`🎁 Промокод принят${r.title ? ': ' + r.title : ''}!`);

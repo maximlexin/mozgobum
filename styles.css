@@ -131,9 +131,9 @@ a.btn { display: inline-block; text-decoration: none; }
 .subj-tabs { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 12px; scrollbar-width: none; }
 .subj-tabs::-webkit-scrollbar { display: none; }
 .subj { display: flex; align-items: center; gap: 8px; white-space: nowrap; padding: 10px 16px; border-radius: var(--r-md); border: 2px solid var(--line);
-  background: var(--surface); font-weight: 900; box-shadow: 0 3px 0 var(--line); transition: transform .08s; }
+  background: var(--surface); font-weight: 900; box-shadow: 0 4px 0 var(--line); transition: transform .08s; }
 .subj span { font-size: var(--fs-xl); }
-.subj.active { background: var(--c); color: #fff; border-color: var(--cd); box-shadow: 0 3px 0 var(--cd); }
+.subj.active { background: var(--c); color: #fff; border-color: var(--cd); box-shadow: 0 4px 0 var(--cd); }
 .subj:active { transform: translateY(3px); box-shadow: none; }
 
 .hello { display: flex; align-items: center; gap: 12px; margin: 6px 0 18px; }
@@ -144,7 +144,7 @@ a.btn { display: inline-block; text-decoration: none; }
 
 .unit { margin-bottom: 28px; }
 .unit-head { background: var(--c); color: #fff; border-radius: var(--radius); padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px;
-  box-shadow: 0 5px 0 var(--cd); }
+  box-shadow: 0 4px 0 var(--cd); }
 .kicker { font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: .06em; opacity: .85; font-weight: 900; }
 .unit-head h3 { font-size: var(--fs-2xl); margin: 2px 0; }
 .unit-head p { font-size: var(--fs-sm); opacity: .92; }
@@ -404,7 +404,7 @@ a.btn { display: inline-block; text-decoration: none; }
 .ch-track { position: relative; height: 14px; background: var(--surface-2); border-radius: var(--r-pill); margin: 16px 22px 26px 4px; }
 .ch-fill { height: 100%; border-radius: var(--r-pill); background: linear-gradient(90deg, #ffd84a, var(--orange)); transition: width .6s; }
 .chest { position: absolute; top: 50%; transform: translate(-50%, -50%); width: 42px; height: 42px; border-radius: var(--r-md); background: var(--surface);
-  border: 3px solid var(--cc); display: grid; place-items: center; box-shadow: 0 3px 0 var(--cc); }
+  border: 3px solid var(--cc); display: grid; place-items: center; box-shadow: 0 4px 0 var(--cc); }
 .chest span { font-size: var(--fs-2xl); line-height: 1; }
 .chest small { position: absolute; top: 44px; font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
 .chest.locked span { filter: grayscale(1); opacity: .45; }
@@ -447,13 +447,13 @@ a.btn { display: inline-block; text-decoration: none; }
 /* ===== Новые типы заданий ===== */
 .tf { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .tf-btn { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 22px 10px; border-radius: var(--r-lg); font-size: var(--fs-xl); font-weight: 900;
-  border: 2px solid var(--line); background: var(--surface); box-shadow: 0 5px 0 var(--line); transition: transform .08s, box-shadow .08s; }
+  border: 2px solid var(--line); background: var(--surface); box-shadow: 0 4px 0 var(--line); transition: transform .08s, box-shadow .08s; }
 .tf-btn span { font-size: var(--fs-4xl); line-height: 1; }
 .tf-btn.yes span { color: var(--green); }
 .tf-btn.no span { color: var(--red); }
 .tf-btn:active:not(:disabled) { transform: translateY(5px); box-shadow: none; }
-.tf-btn.right { border-color: var(--green); background: var(--ok-bg); box-shadow: 0 5px 0 var(--green); color: var(--ok-text); }
-.tf-btn.wrong { border-color: var(--red); background: var(--bad-bg); box-shadow: 0 5px 0 var(--red); color: var(--bad-text); animation: shake .4s; }
+.tf-btn.right { border-color: var(--green); background: var(--ok-bg); box-shadow: 0 4px 0 var(--green); color: var(--ok-text); }
+.tf-btn.wrong { border-color: var(--red); background: var(--bad-bg); box-shadow: 0 4px 0 var(--red); color: var(--bad-text); animation: shake .4s; }
 .tf-btn.dim { opacity: .4; }
 
 .find { display: flex; flex-wrap: wrap; gap: 8px; font-size: var(--fs-xl); }
@@ -493,7 +493,7 @@ a.btn { display: inline-block; text-decoration: none; }
 .exam-tag { color: var(--purple); }
 .exam .lbar > div { background: linear-gradient(180deg, #c49bff, var(--purple)); }
 .node.final { width: 96px; height: 92px; font-size: 42px; border-radius: var(--r-xl); }
-.unit.final .unit-head { background: linear-gradient(135deg, #ffc800, #ff8a00); box-shadow: 0 5px 0 #d96f00; }
+.unit.final .unit-head { background: linear-gradient(135deg, #ffc800, #ff8a00); box-shadow: 0 4px 0 #d96f00; }
 .grade-scale { display: flex; gap: 8px; }
 .grade-scale span, .grade-inline { padding: 4px 12px; border-radius: var(--r-md); font-weight: 900; color: #fff; }
 .g2 { background: var(--red); } .g3 { background: var(--orange); } .g4 { background: var(--blue); } .g5 { background: var(--green); }

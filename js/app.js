@@ -165,7 +165,7 @@
     if ((row.xp | 0) <= S.xp) return;
     if (await confirmBox(`В облаке найден прогресс: ${row.xp} XP (здесь ${S.xp} XP). Загрузить его?`, 'Загрузить')) {
       S = migrate(Object.assign(defaults(), row.data, { name: S.name, onboarded: true, consent: S.consent }));
-      save(); toast('☁️ Прогресс загружен из облака'); render();
+      save(); toast('Прогресс загружен из облака'); render();
     }
   }
   // награды с сервера: за приглашения друзей
@@ -808,7 +808,7 @@
   }
   function startReview() {
     const due = dueMistakes().slice(0, REVIEW_SIZE);
-    if (!due.length) { toast('Сейчас нечего повторять — молодец! 👌'); return; }
+    if (!due.length) { toast('Сейчас нечего повторять'); return; }
     L = newLesson('review', due.map(m => prep(m.q)));
     L.subj = due[0].subj;
     T('lesson_start', { mode: 'review', count: due.length });
@@ -1946,15 +1946,15 @@
     'remind-test': async (el, ev) => {
       if (ev) ev.preventDefault();
       const st = await scheduleReminders(true);
-      toast({ ok: '🔔 Проверочное уведомление придёт через 5 секунд — сверни приложение', denied: '🔕 Разреши уведомления для Мозгобума в настройках телефона',
-        unavailable: '⚠️ Уведомления недоступны в этой версии приложения. Обнови приложение', off: 'Включи напоминания' }[st] || 'Не удалось');
+      toast({ ok: 'Проверочное уведомление придёт через 5 секунд. Сверни приложение', denied: 'Разреши уведомления для Мозгобума в настройках телефона',
+        unavailable: 'Уведомления недоступны в этой версии приложения. Обнови приложение', off: 'Включи напоминания' }[st] || 'Не удалось');
     },
     remind: async () => {
       S.remind.on = !S.remind.on; save(); render();
       const st = await scheduleReminders(S.remind.on);
-      if (!S.remind.on) { toast('🔕 Напоминания выключены'); return; }
-      toast({ ok: '🔔 Напоминания включены — сейчас придёт проверочное', denied: '🔕 Разреши уведомления для Мозгобума в настройках телефона',
-        unavailable: '⚠️ Уведомления недоступны в этой версии приложения. Обнови приложение' }[st] || '🔔 Напоминания включены');
+      if (!S.remind.on) { toast('Напоминания выключены'); return; }
+      toast({ ok: 'Напоминания включены. Сейчас придёт проверочное', denied: 'Разреши уведомления для Мозгобума в настройках телефона',
+        unavailable: 'Уведомления недоступны в этой версии приложения. Обнови приложение' }[st] || 'Напоминания включены');
     },
     rename: async () => { const n = await promptBox('Как тебя зовут?', S.name, 'Имя'); if (n !== null) { S.name = n.trim().slice(0, 20); save(); render(); } },
     export: async () => {
@@ -1972,7 +1972,7 @@
       if (!(await confirmBox('Заменить текущий прогресс на загруженный?', 'Заменить', true))) return;
       ['__proto__', 'constructor', 'prototype'].forEach(k => delete data[k]);
       backupState();
-      S = migrate(Object.assign(defaults(), data)); save(); toast('Прогресс загружен ✅'); render();
+      S = migrate(Object.assign(defaults(), data)); save(); toast('Прогресс загружен'); render();
     },
     reset: async () => {
       if (!(await confirmBox('Точно стереть весь прогресс? Это нельзя отменить.', 'Стереть', true))) return;
@@ -2024,7 +2024,7 @@
       } catch (e) { toast('Промокод можно ввести только на сайте или в приложении'); return; }
       if ((MB.CONFIG.devHashes || []).includes(hex)) {
         try { localStorage.setItem(DEV_KEY, '1'); } catch (e) { /* нет хранилища */ }
-        toast('🛠️ Режим разработчика включён'); render();
+        toast('Режим разработчика включён'); render();
         return;
       }
       if ((MB.CONFIG.noAdsHashes || []).includes(hex)) {
@@ -2088,7 +2088,7 @@
     'email-start': async () => {
       const email = ($('#emailInp').value || '').trim();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast('Проверь адрес почты'); return; }
-      try { emailStep = { email, type: await MB.cloud.emailStart(email) }; toast('📨 Код отправлен на почту'); render(); }
+      try { emailStep = { email, type: await MB.cloud.emailStart(email) }; toast('Код отправлен на почту'); render(); }
       catch (e) { toast('Не получилось отправить код. Попробуй позже'); }
     },
     'email-verify': async () => {
@@ -2096,7 +2096,7 @@
       if (!code) return;
       try {
         await MB.cloud.emailVerify(emailStep.email, code, emailStep.type);
-        emailStep = null; T('email_linked', {}); toast('✅ Готово! Прогресс и Плюс привязаны к почте');
+        emailStep = null; T('email_linked', {}); toast('Готово. Прогресс и Плюс привязаны к почте');
         syncPlus(); cloudRestore(); render();
       } catch (e) { toast('Код не подошёл. Проверь и попробуй ещё раз'); }
     },
@@ -2434,7 +2434,7 @@
   save();
   plusPerks();
   render();
-  if (brokenSaved) setTimeout(() => toast('⚠️ Сохранение было повреждено. Копия отложена, начинаем заново.'), 800);
+  if (brokenSaved) setTimeout(() => toast('Сохранение было повреждено. Копия сохранена отдельно, начинаем заново'), 800);
   T('app_open', { onboarded: S.onboarded, plus: isPlus(), lessons: S.lessons, streak: S.streak, src: MB.cloud.src() || '' });
   // облако работает только после согласия с документами
   let cloudStarted = false;

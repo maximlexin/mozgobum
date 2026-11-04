@@ -5,7 +5,9 @@ MB.cloud = (() => {
   const C = MB.CONFIG;
   // сервер настроен И игрок принял документы — до согласия ничего не отправляем
   let allowed = false;
-  const on = () => !!(C.supabaseUrl && C.supabaseAnonKey) && allowed;
+  // тестовые заходы владельца (режим разработчика, localhost) в статистику не попадают
+  const testRun = () => { try { return localStorage.getItem('mozgobum-dev') === '1' || (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && localStorage.getItem('mozgobum-cloud-test') !== '1'); } catch (e) { return false; } };
+  const on = () => !!(C.supabaseUrl && C.supabaseAnonKey) && allowed && !testRun();
   const LS = { pid: 'mozgobum-pid', auth: 'mozgobum-auth', queue: 'mozgobum-events', ref: 'mozgobum-ref',
     refDone: 'mozgobum-ref-done', refCode: 'mozgobum-refcode', pay: 'mozgobum-pending-pay' };
   const get = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };

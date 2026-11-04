@@ -632,9 +632,10 @@
     profile: svg('<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/>'),
   };
   const NAV = [
-    ['learn', NAV_ICONS.learn, 'Учиться'], ['tests', NAV_ICONS.tests, 'Тесты'], ['review', NAV_ICONS.review, 'Ошибки'],
-    ['quests', NAV_ICONS.quests, 'Задания'], ['shop', NAV_ICONS.shop, 'Магазин'], ['profile', NAV_ICONS.profile, 'Профиль'],
+    ['learn', NAV_ICONS.learn, 'Учиться'], ['quests', NAV_ICONS.quests, 'Задания'], ['shop', NAV_ICONS.shop, 'Магазин'], ['profile', NAV_ICONS.profile, 'Профиль'],
   ];
+  // «Тесты» и «Ошибки» открываются из карточки «Что дальше», при этом вкладка «Учиться» остаётся подсвеченной
+  const navActive = id => view === id || (id === 'learn' && (view === 'tests' || view === 'review'));
   function badge(id) {
     if (id === 'review') { const n = dueMistakes().length; return n ? `<span class="badge">${n}</span>` : ''; }
     if (id === 'quests') { const n = claimable(); return n ? '<span class="badge dot">!</span>' : ''; }
@@ -664,12 +665,12 @@
     return `<div class="shell">
       <nav class="sidebar">
         <div class="brand">${MB.mascot('happy', S.look)}<span>Мозгобум</span></div>
-        ${NAV.map(([id, ic, t]) => `<button class="nav-item ${view === id ? 'active' : ''}" data-act="nav" data-v="${id}"><span class="ico">${ic}</span><span>${t}</span>${badge(id)}</button>`).join('')}
+        ${NAV.map(([id, ic, t]) => `<button class="nav-item ${navActive(id) ? 'active' : ''}" data-act="nav" data-v="${id}"><span class="ico">${ic}</span><span>${t}</span>${badge(id)}</button>`).join('')}
       </nav>
       <main class="main">${topbar()}<div class="content">${content}</div></main>
       <aside class="rail">${rail()}</aside>
       <nav class="tabbar">
-        ${NAV.map(([id, ic, t]) => `<button class="tab ${view === id ? 'active' : ''}" data-act="nav" data-v="${id}"><span class="ico">${ic}</span><span class="t">${t}</span>${badge(id)}</button>`).join('')}
+        ${NAV.map(([id, ic, t]) => `<button class="tab ${navActive(id) ? 'active' : ''}" data-act="nav" data-v="${id}"><span class="ico">${ic}</span><span class="t">${t}</span>${badge(id)}</button>`).join('')}
       </nav>
     </div>${sheet ? sheetHtml() : ''}${chestOpen ? chestModal() : ''}${theoryOpen ? theoryModal() : ''}`;
   }
@@ -714,10 +715,26 @@
     if (due) return `Цель выполнена! А ещё есть ${due} ${plural(due, ['ошибка', 'ошибки', 'ошибок'])} для повторения 😉`;
     return pick(['Цель дня выполнена! Ты машина 💪', 'Мозг прокачан на сегодня! Но можно ещё 😏', 'Красота! Завтра продолжим?']);
   }
+  // «Что дальше»: одна главная кнопка (следующий урок открывается сразу) и короткие варианты рядом
+  function nextCard(subj, path, curIdx) {
+    const e = curIdx >= 0 ? path[curIdx] : null;
+    const where = !e ? 'Все темы предмета пройдены' : e.final ? subj.title : `Тема ${e.ui + 1} · ${e.unit.title}`;
+    const due = dueMistakes().length, claim = claimable();
+    const main = e && !isLocked(path, e)
+      ? `<button class="next-main" data-act="start" data-k="${esc(e.key)}"><span class="nm-text"><b>${esc(e.title)}</b><small>${esc(where)}</small></span><span class="nm-go" aria-hidden="true">→</span></button>`
+      : `<div class="next-done"><b>${esc(where)}</b><small>Повторяй уроки, чтобы не забыть</small></div>`;
+    const alts = [
+      due ? `<button class="next-alt" data-act="nav" data-v="review">Ошибки <b>${due}</b></button>` : '',
+      `<button class="next-alt" data-act="nav" data-v="tests">Проверка знаний</button>`,
+      claim ? `<button class="next-alt" data-act="nav" data-v="quests">Награды <b>${claim}</b></button>` : '',
+    ].join('');
+    return `<section class="next-card" aria-label="Что дальше" style="--c:${subj.color};--cd:${subj.dark}">${main}<div class="next-alts">${alts}</div></section>`;
+  }
   function learnView() {
     const subj = subjById(S.subject), path = pathOf(subj);
     const curIdx = path.findIndex(e => !stars(e.key));
     let html = `<div class="subj-tabs">${MB.subjects.map(s => `<button class="subj ${s.id === subj.id ? 'active' : ''}" style="--c:${s.color};--cd:${s.dark}" data-act="subj" data-s="${s.id}"><span>${s.icon}</span>${s.title}</button>`).join('')}</div>
+      ${nextCard(subj, path, curIdx)}
       <div class="hello"><div class="hello-m" data-act="boom-talk" title="Потрогай Бума">${MB.mascot(S.lastDay === today() ? 'happy' : 'wow', S.look)}</div><div class="bubble">${mascotLine()}</div></div>
       ${nyCard()}
       <div class="map-chests">${chestWidget()}</div>

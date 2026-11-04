@@ -55,7 +55,7 @@ th{color:var(--muted);font-weight:600;font-size:12px}
 <div id="app" hidden>
   <h2>Сейчас в игре</h2>
   <div class="grid" id="live"></div>
-  <p class="hint">«Онлайн» — игроки, от которых за последние минуты пришли события. Считаются только те, кто разрешил облако и аналитику.</p>
+  <p class="hint">«Реальный игрок» — одно устройство, на котором прошли хотя бы один урок. Заходы без уроков (случайные открытия, проверки) считаются отдельно. Один человек на двух устройствах или после переустановки считается дважды: личность мы не определяем. Заходы из режима разработчика и с localhost в статистику не попадают.</p>
   <div class="flex"><button class="ghost" id="reload">Обновить</button><label class="flex" style="margin:0"><input type="checkbox" id="auto" style="width:auto"> каждые 30 сек</label></div>
 
   <h2>Скачивания приложения (GitHub)</h2>
@@ -159,7 +159,8 @@ th{color:var(--muted);font-weight:600;font-size:12px}
     try {
       const o = await api('overview');
       $('live').innerHTML = card('Онлайн сейчас (5 мин)', num(o.online_5m)) + card('За последний час', num(o.online_1h)) + card('Активных за сутки', num(o.active_24h))
-        + card('Всего игроков', num(o.players)) + card('Новых за сутки', num(o.new_24h)) + card('Новых за 7 дней', num(o.new_7d))
+        + card('Реальных игроков', num(o.players_real)) + card('из них Android / сайт', num(o.players_android) + ' / ' + num(o.players_web)) + card('Новых реальных за 7 дней', num(o.new_real_7d))
+        + card('Заходов без уроков', num(Math.max(0, (o.players || 0) - (o.players_real || 0))))
         + card('Оплат', num(o.paid)) + card('Выручка, ₽', num(o.revenue)) + card('Промокодов активировано', num(o.promo_redeemed));
       $('authMsg').textContent = ''; $('auth').hidden = true; $('app').hidden = false; $('logout').hidden = false;
     } catch (e) {
@@ -180,7 +181,7 @@ th{color:var(--muted);font-weight:600;font-size:12px}
         if (!last) last = { tag: x.tag_name, n: a.download_count };
         rows.push('<tr><td>' + esc(x.tag_name || x.name) + '</td><td>' + esc(a.name) + '</td><td>' + num(a.download_count) + '</td><td>' + esc((x.published_at || '').slice(0, 10)) + '</td></tr>');
       }));
-      $('dl').innerHTML = card('Скачиваний APK всего', num(total)) + card('Последний релиз', last ? last.tag : '—') + card('Скачиваний последнего', last ? num(last.n) : '—');
+      $('dl').innerHTML = card('Загрузок файла APK (не людей)', num(total)) + card('Последний релиз', last ? last.tag : '—') + card('Скачиваний последнего', last ? num(last.n) : '—');
       $('dlTable').innerHTML = '<tr><th>Релиз</th><th>Файл</th><th>Скачиваний</th><th>Дата</th></tr>' + (rows.join('') || '<tr><td colspan="4">APK в релизах не найден</td></tr>');
     } catch (e) { $('dl').innerHTML = card('Скачивания', 'ошибка'); $('dlTable').innerHTML = '<tr><td>' + esc(e.message) + '</td></tr>'; }
   }

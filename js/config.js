@@ -2,12 +2,12 @@
 // без аналитики и облака, покупка «Плюса» — тестовая, прямо на устройстве.
 // anon key — публичный ключ Supabase, его можно хранить в коде (доступ ограничен правилами RLS).
 MB.CONFIG = {
-  supabaseUrl: '',          // например: 'https://abcdefgh.supabase.co'
-  supabaseAnonKey: '',
+  supabaseUrl: 'https://sylnxqhywaegbvscjari.supabase.co',
+  supabaseAnonKey: 'sb_publishable_Yqnz4bydtX7muh8umgEcrg_ocoFLLLo',
   emailLogin: false,        // вход по почте: включать только осознанно (почта — персональные данные, сервер вне РФ)
   // Переключатели выпуска: plus — карточка покупки «Плюса»; legal — экран согласия и ссылки на документы.
   // Включать, когда готовы оплата и документы с реквизитами. Без legal облако не включается (нет согласия).
-  features: { plus: false, legal: false },
+  features: { plus: false, legal: true },
   appVersion: '1.1.0',
   plus: { sku: 'plus_30', price: 49, days: 30 },
   docsVersion: '1.0',

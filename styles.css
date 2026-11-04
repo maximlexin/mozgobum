@@ -651,6 +651,7 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; -webkit-user
 .inv-head small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
 .inv-link code, .acc-id { display: block; font-size: 12px; background: var(--surface-2); padding: 8px 10px; border-radius: 10px; word-break: break-all; }
 .consent { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 420px; text-align: left; font-size: 14px; color: var(--text); }
+.consent label span { min-width: 0; }
 .consent label { display: flex; gap: 10px; align-items: flex-start; line-height: 1.35; }
 .consent input { width: 20px; height: 20px; flex: none; margin-top: 1px; accent-color: var(--green); }
 .consent a { color: var(--blue); }

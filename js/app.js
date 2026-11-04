@@ -1602,9 +1602,9 @@
   // Документы принимаются галочками, по умолчанию не отмеченными
   function consentBlock() {
     return `<div class="consent">
-      <label><input type="checkbox" class="consent-cb"> Принимаю <a href="docs/terms.html" target="_blank" rel="noopener">пользовательское соглашение</a>
-        и <a href="docs/privacy.html" target="_blank" rel="noopener">политику конфиденциальности</a>, даю <a href="docs/consent.html" target="_blank" rel="noopener">согласие на обработку данных</a></label>
-      <label><input type="checkbox" class="consent-cb"> Мне есть 14 лет, или мой родитель разрешил мне играть</label>
+      <label><input type="checkbox" class="consent-cb"><span>Принимаю <a href="docs/terms.html" target="_blank" rel="noopener">пользовательское соглашение</a>
+        и <a href="docs/privacy.html" target="_blank" rel="noopener">политику конфиденциальности</a>, даю <a href="docs/consent.html" target="_blank" rel="noopener">согласие на обработку данных</a></span></label>
+      <label><input type="checkbox" class="consent-cb"><span>Мне есть 14 лет, или мой родитель разрешил мне играть</span></label>
     </div>`;
   }
   const consentOk = () => [...document.querySelectorAll('.consent-cb')].every(c => c.checked);

@@ -621,8 +621,19 @@
   function go(v) { view = v; sheet = null; render(); window.scrollTo(0, 0); }
 
   // ---------- Шапка и меню ----------
+  // Иконки навигации: линия 2 px, цвет от текста (единый набор, без эмодзи)
+  const svg = d => `<svg class="ico-svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const NAV_ICONS = {
+    learn: svg('<path d="M2.5 5.5C5 4.4 8.6 4.6 12 6.6c3.4-2 7-2.2 9.5-1.1V19c-2.5-1.1-6.1-.9-9.5 1.1-3.4-2-7-2.2-9.5-1.1z"/><path d="M12 6.6V20"/>'),
+    tests: svg('<rect x="5" y="4" width="14" height="17" rx="2.5"/><path d="M9 4h6v3H9z"/><path d="M8.5 14.5l2.5 2.5 4.5-5"/>'),
+    review: svg('<path d="M4 12a8 8 0 0 1 14-5.3L20 9"/><path d="M20 4v5h-5"/><path d="M20 12a8 8 0 0 1-14 5.3L4 15"/><path d="M4 20v-5h5"/>'),
+    quests: svg('<path d="M4 7l1.5 1.5L8 6"/><path d="M4 17l1.5 1.5L8 16"/><path d="M12 7h8M12 12h8M12 17h8"/>'),
+    shop: svg('<path d="M5 8.5h14l-1 11.5H6z"/><path d="M9 8.5V7a3 3 0 0 1 6 0v1.5"/>'),
+    profile: svg('<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/>'),
+  };
   const NAV = [
-    ['learn', '🏠', 'Учиться'], ['tests', '📋', 'Тесты'], ['review', '🎯', 'Ошибки'], ['quests', '📜', 'Задания'], ['shop', '🛒', 'Магазин'], ['profile', '😎', 'Профиль'],
+    ['learn', NAV_ICONS.learn, 'Учиться'], ['tests', NAV_ICONS.tests, 'Тесты'], ['review', NAV_ICONS.review, 'Ошибки'],
+    ['quests', NAV_ICONS.quests, 'Задания'], ['shop', NAV_ICONS.shop, 'Магазин'], ['profile', NAV_ICONS.profile, 'Профиль'],
   ];
   function badge(id) {
     if (id === 'review') { const n = dueMistakes().length; return n ? `<span class="badge">${n}</span>` : ''; }

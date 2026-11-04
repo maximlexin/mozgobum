@@ -1301,10 +1301,12 @@
   const gradeOf = pct => pct >= 0.9 ? 5 : pct >= EXAM_PASS ? 4 : pct >= 0.5 ? 3 : 2;
 
   // все задания «собери определение / формулу» предмета — для теста-диктанта
-  const dictPool = subj => subj.units.flatMap(u => u.lessons.flatMap(l => l.pool))
+  const dictPool = (subj, unitId) => subj.units.filter(u => !unitId || u.id === unitId).flatMap(u => u.lessons.flatMap(l => l.pool))
     .filter(q => typeof q === 'object' && (q.type === 'dictation' || q.type === 'formula'));
   function testsView() {
     const subj = subjById(testSubj || S.subject);
+    // диктанты — по темам: показываем темы, где есть хотя бы 3 задания «собери определение / формулу»
+    const dictUnits = subj.units.map((u, i) => [u, i, dictPool(subj, u.id)]).filter(x => x[2].length >= 3);
     const card = (uid, title, desc, icon) => {
       const r = S.tests[`${subj.id}:${uid}`];
       return `<div class="card test-card" style="--c:${subj.color};--cd:${subj.dark}">
@@ -1320,20 +1322,23 @@
       <div class="set-row test-len"><span>Вопросов в тесте</span><div class="seg">${[10, 20, 30].map(n => `<button class="${testLen === n ? 'on' : ''}" data-act="tlen" data-n="${n}">${n}</button>`).join('')}</div></div>
       <div class="tests">
         ${card('all', 'Вся программа', `Задания из всех тем: ${subj.title.toLowerCase()}`, '🏆')}
-        ${dictPool(subj).length >= 5 ? card('dict', subj.id === 'phys' ? 'Физический диктант' : 'Диктант: определения',
-          `Собери определения${dictPool(subj).some(q => q.type === 'formula') ? ' и формулы' : ''} по всем темам (${dictPool(subj).length} заданий)`, '✍️') : ''}
         ${subj.units.map((u, i) => card(u.id, `Тема ${i + 1}. ${u.title}`, u.desc, '📋')).join('')}
-      </div>`;
+      </div>
+      ${dictUnits.length ? `<h2 class="tests-sub">${subj.id === 'phys' ? 'Физический диктант' : 'Диктанты'} по темам</h2>
+      <div class="tests">${dictUnits.map(([u, i, p]) => card('dict:' + u.id, `Тема ${i + 1}. ${u.title}`,
+        `Собери определения${p.some(q => q.type === 'formula') ? ' и формулы' : ''} (${p.length} заданий)`, '✍️')).join('')}</div>` : ''}`;
   }
   function startTest(subjId, uid) {
     const subj = subjById(subjId);
-    const units = uid === 'all' || uid === 'dict' ? subj.units : subj.units.filter(u => u.id === uid);
+    const dictUnit = uid.startsWith('dict:') ? uid.slice(5) : null;
+    const units = uid === 'all' ? subj.units : subj.units.filter(u => u.id === (dictUnit || uid));
     if (!units.length) return;
-    const pool = uid === 'dict' ? dictPool(subj) : units.flatMap(u => u.lessons.flatMap(l => l.pool));
+    const pool = dictUnit ? dictPool(subj, dictUnit) : units.flatMap(u => u.lessons.flatMap(l => l.pool));
+    if (!pool.length) return;
     L = newLesson('test', buildQuestions(pool, Math.min(testLen, pool.length)));
     T('lesson_start', { mode: 'test', key: `${subj.id}:${uid}`, subj: subj.id, size: testLen });
     Object.assign(L, { subj: subj.id, testKey: `${subj.id}:${uid}`, testUid: uid,
-      testTitle: uid === 'all' ? `${subj.title}: вся программа` : uid === 'dict' ? `${subj.title}: диктант` : `${subj.title}: ${units[0].title}`, log: [] });
+      testTitle: uid === 'all' ? `${subj.title}: вся программа` : dictUnit ? `${subj.title}: диктант. ${units[0].title}` : `${subj.title}: ${units[0].title}`, log: [] });
     view = 'lesson';
     render();
   }

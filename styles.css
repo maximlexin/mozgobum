@@ -831,3 +831,5 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; -webkit-user
   color: var(--text); font: inherit; font-size: var(--fs-sm); font-weight: 800; cursor: pointer; }
 .next-alt b { background: var(--red, #ff4b4b); color: #fff; border-radius: var(--r-pill); min-width: 22px; padding: 1px 7px; font-size: var(--fs-xs); text-align: center; }
 .next-alt:hover { background: var(--surface-2); }
+
+.tests-sub { font-size: var(--fs-lg); margin: 24px 0 10px; }

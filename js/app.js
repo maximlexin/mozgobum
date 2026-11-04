@@ -1425,14 +1425,14 @@
   // ---------- Профиль ----------
   // Приглашение друга: код выдаёт сервер после первой отправки событий
   function inviteCard() {
-    const link = MB.cloud.on() && MB.cloud.inviteLink();
+    const code = MB.cloud.on() && MB.cloud.myCode();
     let action;
-    if (link) action = `<div class="inv-link"><code>${esc(link)}</code></div><button class="btn small" data-act="invite">📤 Поделиться ссылкой</button>`;
-    else if (MB.cloud.on()) action = '<small class="muted">Ссылка появится через минуту, когда игра свяжется с сервером.</small>';
+    if (code) action = `<div class="inv-link"><code class="inv-code">${esc(code)}</code></div><div class="row-btns"><button class="btn small" data-act="invite-copy">📋 Скопировать код</button><button class="btn small ghost" data-act="invite">📤 Отправить ссылкой</button></div>`;
+    else if (MB.cloud.on()) action = '<small class="muted">Код появится через минуту, когда игра свяжется с сервером.</small>';
     else action = '<button class="btn small gray" disabled>Скоро</button><small class="muted">Приглашения заработают в ближайшем обновлении.</small>';
     return `<div class="card invite-card">
       <div class="inv-head"><span class="inv-ico">🤝</span><div><b>Пригласи друга</b>
-        <small>Когда друг пройдёт первый урок: ему — 50 💎 и щит, тебе — 100 💎 и значок «Лучший друг».</small></div></div>
+        <small>Друг вводит твой код в «Профиль → Промокод». Когда он пройдёт первый урок: ему — 50 💎 и щит, тебе — 100 💎 и значок «Лучший друг».</small></div></div>
       ${action}
     </div>`;
   }
@@ -1938,6 +1938,16 @@
       if (!(MB.CONFIG.giftHashes || []).includes(hex)) {
         // не подарочный код — спрашиваем сервер (если облако включено)
         const r = await MB.cloud.redeemPromo(code);
+        // не промокод — возможно, это код друга (6–12 букв и цифр)
+        if ((!r || r.status === 'not_found') && /^[A-Z0-9]{6,12}$/.test(code)) {
+          const st = await MB.cloud.useFriendCode(code);
+          const fmsg = { rewarded: '🎁 Код друга принят! Награда у тебя', need_lesson: '✅ Код друга принят! Пройди первый урок — и получишь награду',
+            invalid: 'Такого кода нет', self: 'Это твой собственный код', already: 'Код друга ты уже вводил' }[st];
+          if (st === 'rewarded') { await applyRewards(); MB.sound.play('finish'); confetti(); }
+          if (st) T('referral_claimed', { status: st, manual: true });
+          toast(fmsg || (st ? 'Код не подошёл' : 'Такого промокода нет'));
+          return;
+        }
         if (!r) { toast('Такого промокода нет'); return; }
         const msg = { not_found: 'Такого промокода нет', expired: 'Срок действия промокода закончился', used_up: 'Промокод уже использовали все',
           already: 'Ты уже активировал этот промокод', inactive: 'Промокод сейчас не действует' }[r.status];
@@ -1954,6 +1964,12 @@
       MB.sound.play('finish'); confetti();
       toast('🎁 Промокод принят: Мозгобум Плюс навсегда!');
       render();
+    },
+    'invite-copy': async () => {
+      const code = MB.cloud.myCode(); if (!code) return;
+      T('referral_share', { how: 'code' });
+      try { await navigator.clipboard.writeText(code); toast('Код скопирован — отправь его другу'); }
+      catch (e) { ask({ title: 'Скопируй код и отправь другу', input: code, ok: 'Готово', cancel: false }); }
     },
     invite: async () => {
       const link = MB.cloud.inviteLink();

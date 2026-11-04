@@ -167,6 +167,16 @@ MB.cloud = (() => {
     if (!on()) return null;
     try { return await callFn('promo-redeem', { player_id: pid, code }, true); } catch (e) { return null; }
   }
+  // код друга, введённый вручную (без ссылки): тот же путь, что и ?ref=
+  async function useFriendCode(code) {
+    if (!on()) return null;
+    if (get(LS.refDone)) return 'already';
+    if (myCode() && String(code).toUpperCase() === myCode()) return 'self';
+    set(LS.ref, String(code).toUpperCase());
+    const st = await claimReferral();
+    if (st) { /* claimReferral сам снимает код, кроме need_lesson */ }
+    return st;
+  }
   async function fetchRewards() {
     if (!on()) return [];
     try { const r = await callFn('rewards', { player_id: pid }); return (r && r.rewards) || []; } catch (e) { return []; }
@@ -189,6 +199,6 @@ MB.cloud = (() => {
   function logout() { saveSession(null); }
 
   return { on, allow: v => { allowed = !!v; if (allowed) flush(); }, pid, platform, track, flush, pushSave, pullSave, plusUntil, buy, hasPending, checkPending,
-    myCode, inviteLink, hasRef: () => !!get(LS.ref), claimReferral, fetchRewards, redeemPromo,
+    myCode, inviteLink, hasRef: () => !!get(LS.ref), claimReferral, fetchRewards, redeemPromo, useFriendCode,
     emailStart, emailVerify, logout, user: () => (session && session.user) || null };
 })();

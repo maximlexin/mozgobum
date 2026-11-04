@@ -724,9 +724,9 @@
       ? `<button class="next-main" data-act="start" data-k="${esc(e.key)}"><span class="nm-text"><b>${esc(e.title)}</b><small>${esc(where)}</small></span><span class="nm-go" aria-hidden="true">→</span></button>`
       : `<div class="next-done"><b>${esc(where)}</b><small>Повторяй уроки, чтобы не забыть</small></div>`;
     const alts = [
-      due ? `<button class="next-alt" data-act="nav" data-v="review">Ошибки <b>${due}</b></button>` : '',
-      `<button class="next-alt" data-act="nav" data-v="tests">Проверка знаний</button>`,
-      claim ? `<button class="next-alt" data-act="nav" data-v="quests">Награды <b>${claim}</b></button>` : '',
+      `<button class="next-alt" data-act="nav" data-v="tests">${NAV_ICONS.tests}<span>Тесты</span></button>`,
+      due ? `<button class="next-alt" data-act="nav" data-v="review">${NAV_ICONS.review}<span>Ошибки</span><b>${due}</b></button>` : '',
+      claim ? `<button class="next-alt" data-act="nav" data-v="quests">${NAV_ICONS.quests}<span>Награды</span><b>${claim}</b></button>` : '',
     ].join('');
     return `<section class="next-card" aria-label="Что дальше" style="--c:${subj.color};--cd:${subj.dark}">${main}<div class="next-alts">${alts}</div></section>`;
   }
@@ -1398,7 +1398,6 @@
           ${q.claimed ? '<span class="q-rew">получено</span>' : done ? `<button class="btn small gold" data-act="claim" data-i="${i}">+${q.reward} 💎</button>` : `<span class="q-rew">${q.reward} 💎</span>`}
         </div>`;
       }).join('')}</div>
-      ${inviteCard()}
       <h3 class="sec">Достижения</h3>${achGrid()}`;
   }
   const achGrid = () => `<div class="ach-grid">${ACH.map(a => `<div class="ach ${S.achievements[a.id] ? 'got' : ''}"><div class="a-ico">${a.icon}</div><b>${a.title}</b><small>${a.text}</small></div>`).join('')}</div>`;
@@ -1544,7 +1543,7 @@
         <div class="set-row"><span>Звук</span><button class="toggle ${S.sound ? 'on' : ''}" data-act="sound" aria-label="Звук"><i></i></button></div>
         <div class="set-row"><span>❄️ Снегопад<small class="muted" style="display:block">Сам включается с 1 декабря по 15 января</small></span><button class="toggle ${snowOn() ? 'on' : ''}" data-act="snow" aria-label="Снегопад"><i></i></button></div>
         ${isApp() ? `<div class="set-row"><span>Напоминания<small class="muted" style="display:block">Бум напомнит в течение дня, с 9 утра до 9 вечера${S.remind.on ? ' · <a href="#" data-act="remind-test" style="color:var(--blue)">проверить сейчас</a>' : ''}</small></span><button class="toggle ${S.remind.on ? 'on' : ''}" data-act="remind" aria-label="Напоминания"><i></i></button></div>`
-        : `<div class="set-row"><span>Приложение для Android<small class="muted" style="display:block">с напоминаниями о серии</small></span><a class="btn small" data-act="apk" href="https://github.com/maximlexin/mozgobum/releases/latest/download/mozgobum.apk">📱 Скачать</a></div>`}
+        : `<div class="set-row"><span>Напоминания<small class="muted" style="display:block">Работают в приложении для Android</small></span><a class="btn small" data-act="apk" href="https://github.com/maximlexin/mozgobum/releases/latest/download/mozgobum.apk">Скачать приложение</a></div>`}
         ${accountRow()}
         <div class="set-row"><span>Имя</span><button class="btn small ghost" data-act="rename">${esc(S.name || 'Игрок')} ✏️</button></div>
         <div class="set-row col"><span>Перенос прогресса на другое устройство</span>

@@ -791,3 +791,13 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; -webkit-user
 .inv-tiers { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; font-size: 13px; }
 .inv-tiers span { color: var(--muted); }
 .inv-tiers span.on { color: var(--green-d, var(--text)); font-weight: 800; }
+
+/* Сообщить об ошибке в задании */
+.qtype-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.report-btn { background: none; border: 0; padding: 4px 0; color: var(--muted); font: inherit; font-size: 12px; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; white-space: nowrap; }
+.report-btn:hover { color: var(--text); }
+.dlg-choices { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+.dlg-choice { text-align: left; background: var(--surface-2); color: var(--text); border: 2px solid var(--line); border-radius: 12px; padding: 10px 14px; font: inherit; font-weight: 700; cursor: pointer; }
+.dlg-choice.on { border-color: var(--blue); background: color-mix(in srgb, var(--blue) 12%, var(--surface)); }
+.dlg textarea.name-inp { resize: none; margin-bottom: 10px; }
+.dlg .btn:disabled { opacity: .5; }

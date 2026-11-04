@@ -84,6 +84,11 @@ th{color:var(--muted);font-weight:600;font-size:12px}
   <div class="panel" style="margin-top:12px"><b>Время суток (МСК): уроков по часам</b><div id="stHours"></div></div>
   <p class="hint">Данные анонимные и только от игроков, давших согласие. Метка источника: ссылка вида https://maximlexin.github.io/mozgobum/?src=vk запоминается при первом заходе.</p>
 
+  <h2>Жалобы на задания</h2>
+  <div class="flex"><label class="flex" style="margin:0">Показать: <select id="repStatus" style="width:auto"><option value="new">новые</option><option value="fixed">исправленные</option><option value="ignored">не ошибка</option></select></label></div>
+  <div class="panel tbl" style="margin-top:10px"><table id="reports"></table></div>
+  <p class="hint">Игроки жалуются кнопкой «Ошибка в задании?» в уроке. Жалобы сгруппированы по заданию: чем больше обращений, тем выше. «Исправлено» — вы поправили задание; «Не ошибка» — задание верное.</p>
+
   <h2>Новый промокод</h2>
   <div class="panel">
     <div class="row">
@@ -282,14 +287,34 @@ th{color:var(--muted);font-weight:600;font-size:12px}
   }
   $('periodBtns').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; stDays = +b.dataset.n; loadStats(); });
 
+  // ---------- жалобы на задания ----------
+  const REASON = { wrong_answer: 'неверный ответ', typo: 'опечатка', unclear: 'непонятно', other: 'другое' };
+  async function loadReports() {
+    try {
+      const d = await api('reports_list', { status: $('repStatus').value });
+      const rows = (d.groups || []).map(g => '<tr><td><b>' + esc(g.count) + '</b></td><td>' + esc(SUBJ[g.subj] || g.subj || '') + '<br><small class="hint">' + esc(g.key || '') + '</small></td>'
+        + '<td>' + esc(g.question || '') + '<br><small class="hint">Правильный ответ в игре: ' + esc(g.answer || '—') + '</small>'
+        + (g.notes && g.notes.length ? '<br><small>' + g.notes.slice(0, 3).map(n => '«' + esc(n) + '»').join(' ') + '</small>' : '') + '</td>'
+        + '<td>' + Object.entries(g.reasons || {}).map(([k, v]) => esc(REASON[k] || k) + ' ×' + v).join('<br>') + '</td>'
+        + '<td class="flex">' + ($('repStatus').value === 'new' ? '<button class="ghost" data-fix="' + esc(g.task_id) + '">Исправлено</button><button class="ghost" data-ign="' + esc(g.task_id) + '">Не ошибка</button>' : '') + '</td></tr>');
+      $('reports').innerHTML = '<tr><th>Жалоб</th><th>Предмет, урок</th><th>Задание</th><th>Причины</th><th></th></tr>' + (rows.join('') || '<tr><td colspan="5">Жалоб нет</td></tr>');
+    } catch (e) { $('reports').innerHTML = '<tr><td>' + esc(e.message) + '</td></tr>'; }
+  }
+  $('repStatus').onchange = loadReports;
+  $('reports').addEventListener('click', async e => {
+    const b = e.target.closest('button'); if (!b) return;
+    const id = b.dataset.fix || b.dataset.ign; if (!id) return;
+    try { await api('reports_set', { task_id: id, status: b.dataset.fix ? 'fixed' : 'ignored' }); loadReports(); } catch (err) { alert(err.message); }
+  });
+
   function enter() {
-    loadLive(); loadDownloads(); loadStats(); loadCodes(); fillItems();
+    loadLive(); loadDownloads(); loadStats(); loadReports(); loadCodes(); fillItems();
   }
 
   $('saveTok').onclick = () => { setTok($('tok').value.trim()); $('tok').value = ''; enter(); };
   $('tok').addEventListener('keydown', e => { if (e.key === 'Enter') $('saveTok').click(); });
   $('logout').onclick = () => { setTok(''); location.reload(); };
-  $('reload').onclick = () => { loadLive(); loadDownloads(); loadStats(); loadCodes(); };
+  $('reload').onclick = () => { loadLive(); loadDownloads(); loadStats(); loadReports(); loadCodes(); };
   $('auto').onchange = e => { clearInterval(timer); if (e.target.checked) timer = setInterval(loadLive, 30000); };
   $('gen').onclick = () => { $('pCode').value = genCode(); };
   $('create').onclick = createCode;

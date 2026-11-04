@@ -818,7 +818,7 @@
       <div class="boost-chips">${boostChips()}</div>
       <div class="combo-slot">${L.combo >= 3 ? `<div class="combo-badge">🔥 ${L.combo} подряд!</div>` : ''}</div>
       <div class="qcard" key="${L.idx}">
-        <div class="qtype">${label}${q.title || titles[q.type]}</div>
+        <div class="qtype-row"><div class="qtype">${label}${q.title || titles[q.type]}</div><button class="report-btn" data-act="report" aria-label="Сообщить об ошибке в задании">Ошибка в задании?</button></div>
         <div class="q-head"><div class="q-mascot">${MB.mascot('happy', S.look)}</div><h2 class="qtext">${q.q}</h2></div>
         <div class="qbody">${bodyHtml(q)}</div>
         <div class="pad-box">${padHtml()}</div>
@@ -1898,6 +1898,18 @@
       save(); render();
     },
     sound: () => { S.sound = !S.sound; save(); render(); MB.sound.play('tap'); },
+    report: async () => {
+      if (!L) return;
+      const q = L.queue[L.idx], plain = x => String(x == null ? '' : x).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+      const r = await ask({ title: 'Что не так с заданием?', ok: 'Отправить',
+        choices: [{ v: 'wrong_answer', label: 'Неверный ответ' }, { v: 'typo', label: 'Опечатка' }, { v: 'unclear', label: 'Непонятная формулировка' }, { v: 'other', label: 'Другое' }],
+        note: 'Комментарий (по желанию, без личных данных)' });
+      if (!r) return;
+      const sent = await MB.cloud.reportTask({ task_id: q._id || '', subj: L.subj || '', key: (L.entry && L.entry.key) || L.testKey || '', mode: L.mode || '',
+        question: plain(q.q).slice(0, 300), answer: plain(shownAnswer(q)).slice(0, 200), reason: r.choice, note: r.note.slice(0, 200) });
+      T('task_report', { reason: r.choice, ok: !!sent });
+      toast(sent ? 'Спасибо! Мы проверим это задание' : 'Не получилось отправить. Проверь интернет и повтори');
+    },
     'remind-test': async (el, ev) => {
       if (ev) ev.preventDefault();
       const st = await scheduleReminders(true);
@@ -2074,7 +2086,7 @@
   });
   document.addEventListener('keydown', e => {
     if (dialog) {   // открыто наше окно: Enter — ОК (кроме опасных действий вроде выхода), Escape — отмена
-      if (e.key === 'Enter') { e.preventDefault(); if (!dialog.danger) closeDialog(true); }
+      if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); if (!dialog.danger && !(dialog.choices && !dialog.sel)) closeDialog(true); }
       if (e.key === 'Escape') closeDialog(false);
       return;
     }
@@ -2311,21 +2323,32 @@
     const d = dialog;
     layer.innerHTML = `<div class="sheet-bg dlg-bg"><div class="sheet dlg" role="dialog" aria-modal="true">
       ${d.title ? `<h2>${esc(d.title)}</h2>` : ''}${d.text ? `<p>${esc(d.text)}</p>` : ''}
+      ${d.choices ? `<div class="dlg-choices">${d.choices.map(c => `<button class="dlg-choice ${d.sel === c.v ? 'on' : ''}" data-choice="${esc(c.v)}">${esc(c.label)}</button>`).join('')}</div>` : ''}
+      ${d.note ? `<textarea id="dlgNote" class="name-inp" rows="2" maxlength="200" placeholder="${esc(d.note)}">${esc(d.noteVal || '')}</textarea>` : ''}
       ${d.input !== undefined ? `<input id="dlgInput" class="name-inp" value="${esc(d.input)}" placeholder="${esc(d.placeholder || '')}" autocomplete="off" spellcheck="false">` : ''}
       <div class="dlg-btns">${d.cancel === false ? '' : `<button class="btn ghost" data-dlg="0">${esc(d.cancel || 'Отмена')}</button>`}
-        <button class="btn ${d.danger ? 'red' : ''}" data-dlg="1">${esc(d.ok || 'ОК')}</button></div>
+        <button class="btn ${d.danger ? 'red' : ''}" data-dlg="1" ${d.choices && !d.sel ? 'disabled' : ''}>${esc(d.ok || 'ОК')}</button></div>
     </div></div>`;
     const inp = $('#dlgInput');
     if (inp) setTimeout(() => { inp.focus(); inp.select(); }, 50);
   }
   function closeDialog(ok) {
     if (!dialog) return;
-    const d = dialog, inp = $('#dlgInput'), val = inp ? inp.value : null;
+    const d = dialog, inp = $('#dlgInput'), val = inp ? inp.value : null, nt = $('#dlgNote');
+    const noteVal = nt ? nt.value : '';
     dialog = null;
     renderDialog();
+    if (d.choices) { d.resolve(ok && d.sel ? { choice: d.sel, note: noteVal.trim() } : null); return; }
     d.resolve(d.input !== undefined ? (ok ? val : null) : ok);
   }
   document.addEventListener('click', e => {
+    const ch = e.target.closest('[data-choice]');
+    if (ch && dialog && dialog.choices) {
+      e.stopPropagation();
+      const nt = $('#dlgNote'); if (nt) dialog.noteVal = nt.value;
+      dialog.sel = ch.dataset.choice; renderDialog();
+      return;
+    }
     const b = e.target.closest('[data-dlg]');
     if (b) { e.stopPropagation(); closeDialog(b.dataset.dlg === '1'); return; }
     // клик по затемнённому фону = «Отмена» (если отмена есть)

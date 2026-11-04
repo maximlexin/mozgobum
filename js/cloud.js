@@ -179,6 +179,11 @@ MB.cloud = (() => {
     if (st) { /* claimReferral сам снимает код, кроме need_lesson */ }
     return st;
   }
+  // жалоба на задание: true — отправлено
+  async function reportTask(p) {
+    if (!on()) return false;
+    try { const r = await callFn('report', Object.assign({ player_id: pid }, p), true); return !!(r && r.ok); } catch (e) { return false; }
+  }
   async function fetchRewards() {
     if (!on()) return [];
     try { const r = await callFn('rewards', { player_id: pid }); return (r && r.rewards) || []; } catch (e) { return []; }
@@ -201,6 +206,6 @@ MB.cloud = (() => {
   function logout() { saveSession(null); }
 
   return { on, allow: v => { allowed = !!v; if (allowed) flush(); }, pid, platform, track, flush, pushSave, pullSave, plusUntil, buy, hasPending, checkPending,
-    myCode, inviteLink, hasRef: () => !!get(LS.ref), claimReferral, fetchRewards, redeemPromo, useFriendCode, src: () => get('mozgobum-src'),
+    myCode, inviteLink, hasRef: () => !!get(LS.ref), claimReferral, fetchRewards, redeemPromo, useFriendCode, reportTask, src: () => get('mozgobum-src'),
     emailStart, emailVerify, logout, user: () => (session && session.user) || null };
 })();

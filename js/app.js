@@ -45,6 +45,10 @@
       return defaults();
     }
   }
+  // резервная копия текущего прогресса перед заменой или стиранием (одна, самая свежая)
+  function backupState() {
+    try { localStorage.setItem(`${KEY}-backup`, JSON.stringify(S)); } catch (e) { /* нет места */ }
+  }
   // проверка кода переноса прогресса: базовые поля должны быть нужного типа
   function validState(d) {
     if (!d || typeof d !== 'object' || Array.isArray(d)) return false;
@@ -173,7 +177,7 @@
     }
     save();
     const gems = list.filter(r => r.kind === 'gems').reduce((s, r) => s + (r.amount | 0), 0);
-    toast(`🎁 Награда за приглашение${gems ? `: +${gems} 💎` : ''}${list.some(r => r.kind === 'item') ? ' и новый наряд' : ''}!`);
+    toast(`🎁 Награда получена${gems ? `: +${gems} 💎` : ''}${list.some(r => r.kind === 'item') ? ' и новый наряд' : ''}!`);
     confetti(80);
     render();
   }
@@ -1874,11 +1878,13 @@
       try { data = JSON.parse(decodeURIComponent(escape(atob(code.trim())))); } catch (e) { data = null; }
       if (!validState(data)) { await alertBox('Код не подошёл. Проверь, что скопирован целиком.'); return; }
       if (!(await confirmBox('Заменить текущий прогресс на загруженный?', 'Заменить', true))) return;
+      ['__proto__', 'constructor', 'prototype'].forEach(k => delete data[k]);
+      backupState();
       S = migrate(Object.assign(defaults(), data)); save(); toast('Прогресс загружен ✅'); render();
     },
     reset: async () => {
       if (!(await confirmBox('Точно стереть весь прогресс? Это нельзя отменить.', 'Стереть', true))) return;
-      localStorage.removeItem(KEY); S = defaults(); onboardStep = 0; view = 'learn'; render();
+      backupState(); localStorage.removeItem(KEY); S = defaults(); onboardStep = 0; view = 'learn'; render();
     },
     'ob-next': () => { S.name = ($('#nameInp').value || '').trim().slice(0, 20); onboardStep = 1; render(); },
     'ob-goal': el => { S.goal = Number(el.dataset.g); render(); MB.sound.play('tap'); },
@@ -1929,7 +1935,19 @@
         toast('🛠️ Режим разработчика включён'); render();
         return;
       }
-      if (!(MB.CONFIG.giftHashes || []).includes(hex)) { toast('Такого промокода нет'); return; }
+      if (!(MB.CONFIG.giftHashes || []).includes(hex)) {
+        // не подарочный код — спрашиваем сервер (если облако включено)
+        const r = await MB.cloud.redeemPromo(code);
+        if (!r) { toast('Такого промокода нет'); return; }
+        const msg = { not_found: 'Такого промокода нет', expired: 'Срок действия промокода закончился', used_up: 'Промокод уже использовали все',
+          already: 'Ты уже активировал этот промокод', inactive: 'Промокод сейчас не действует' }[r.status];
+        if (msg) { toast(msg); return; }
+        T('promo_redeemed', {});
+        await applyRewards(); await syncPlus();
+        MB.sound.play('finish'); confetti();
+        toast(`🎁 Промокод принят${r.title ? ': ' + r.title : ''}!`);
+        return;
+      }
       S.plusGift = true;
       plusPerks(); save();
       T('promo_redeemed', {});

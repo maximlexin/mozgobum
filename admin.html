@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Мозгобум — панель владельца</title>
+<style>
+:root{--bg:#f4f3fb;--card:#fff;--text:#1f1d2b;--muted:#6b6880;--accent:#6c3ff2;--line:#e4e2ee;--ok:#1a9d4a;--bad:#d93636;--field:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#14121f;--card:#1e1b2e;--text:#f2f0ff;--muted:#aaa5c6;--accent:#a68bff;--line:#2f2a47;--ok:#4cd07d;--bad:#ff6b6b;--field:#27233b}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:500 16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:980px;margin:0 auto;padding:18px 14px 60px}
+h1{font-size:24px;margin:6px 0 2px}h2{font-size:18px;margin:28px 0 10px}
+.sub{color:var(--muted);margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.card small{color:var(--muted);display:block;font-size:13px}
+.card b{font-size:26px;font-weight:800}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+input,select,textarea{width:100%;background:var(--field);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:9px 11px;font:inherit}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+button{background:var(--accent);color:#fff;border:0;border-radius:10px;padding:9px 14px;font:inherit;font-weight:700;cursor:pointer}
+button.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+button.bad{background:var(--bad)}
+button:disabled{opacity:.5;cursor:default}
+.items{display:flex;flex-wrap:wrap;gap:6px;max-height:170px;overflow:auto;padding:6px;border:1px solid var(--line);border-radius:10px}
+.items label{display:inline-flex;align-items:center;gap:5px;margin:0;color:var(--text);font-size:14px;background:var(--bg);border-radius:8px;padding:3px 8px}
+.items input{width:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:12px}
+.tbl{overflow-x:auto}
+.code{font-family:ui-monospace,Consolas,monospace;font-weight:700}
+.pill{display:inline-block;border-radius:20px;padding:1px 9px;font-size:12px;font-weight:700}
+.pill.on{background:#1a9d4a22;color:var(--ok)}.pill.off{background:#d9363622;color:var(--bad)}
+.msg{margin:10px 0;min-height:22px;font-weight:600}.msg.err{color:var(--bad)}.msg.ok{color:var(--ok)}
+.hint{color:var(--muted);font-size:13px}
+.flex{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<main>
+<h1>Панель владельца «Мозгобума»</h1>
+<p class="sub">Скачивания, онлайн, оплаты и промокоды. Страница закрыта ключом доступа (ADMIN_TOKEN); ключ хранится только в этом браузере.</p>
+
+<div class="panel" id="auth">
+  <label for="tok">Ключ доступа</label>
+  <div class="flex"><input id="tok" type="password" autocomplete="off" placeholder="ADMIN_TOKEN" style="max-width:340px"><button id="saveTok">Войти</button><button class="ghost" id="logout" hidden>Выйти</button></div>
+  <div class="msg" id="authMsg"></div>
+</div>
+
+<div id="app" hidden>
+  <h2>Сейчас в игре</h2>
+  <div class="grid" id="live"></div>
+  <p class="hint">«Онлайн» — игроки, от которых за последние минуты пришли события. Считаются только те, кто разрешил облако и аналитику.</p>
+  <div class="flex"><button class="ghost" id="reload">Обновить</button><label class="flex" style="margin:0"><input type="checkbox" id="auto" style="width:auto"> каждые 30 сек</label></div>
+
+  <h2>Скачивания приложения (GitHub)</h2>
+  <div class="grid" id="dl"></div>
+  <div class="tbl" style="margin-top:10px"><table id="dlTable"></table></div>
+  <p class="hint">Данные берутся из публичной статистики релизов GitHub. Посещаемость сайта GitHub Pages здесь не видна: её GitHub показывает только в репозитории (Insights → Traffic).</p>
+
+  <h2>Новый промокод</h2>
+  <div class="panel">
+    <div class="row">
+      <div><label>Код</label><div class="flex"><input id="pCode" placeholder="BUM-XXXX-XXXX" class="code"><button class="ghost" id="gen" type="button">Случайный</button></div></div>
+      <div><label>Название (видит игрок)</label><input id="pTitle" placeholder="Подарок другу"></div>
+    </div>
+    <div class="row">
+      <div><label>Кристаллы 💎</label><input id="pGems" type="number" min="0" value="0"></div>
+      <div><label>Дни «Плюса»</label><input id="pPlus" type="number" min="0" value="0"></div>
+      <div><label>Щиты 🛡️</label><input id="pShield" type="number" min="0" value="0"></div>
+      <div><label>Подсказки 50/50 🔮</label><input id="pFifty" type="number" min="0" value="0"></div>
+      <div><label>Зелья x2 ⚡</label><input id="pX2" type="number" min="0" value="0"></div>
+    </div>
+    <div class="row">
+      <div><label>Сколько раз можно (пусто — без лимита)</label><input id="pMax" type="number" min="1" placeholder="например 50"></div>
+      <div><label>Действует до (пусто — без срока)</label><input id="pExp" type="date"></div>
+    </div>
+    <label>Наряды в подарок (отметьте нужные)</label>
+    <div class="items" id="pItems"></div>
+    <div class="flex" style="margin-top:12px"><button id="create">Создать промокод</button></div>
+    <div class="msg" id="pMsg"></div>
+  </div>
+
+  <h2>Промокоды</h2>
+  <div class="panel tbl"><table id="codes"></table></div>
+  <p class="hint">Код работает один раз на игрока. Промокоды из этого списка действуют, когда у игрока включено облако. Старые «подарочные» коды (бессрочный «Плюс») по-прежнему проверяются в игре без сервера.</p>
+</div>
+</main>
+
+<script>var MB = {};</script>
+<script src="js/config.js"></script>
+<script>try { var _o = document.createElement('script'); _o.src = 'js/mascot.js'; _o.onload = function () { window.dispatchEvent(new Event('mascot-ready')); }; document.head.appendChild(_o); } catch (e) {}</script>
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const C = (window.MB && MB.CONFIG) || {};
+  const KEY = 'mozgobum-admin';
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const num = v => (v == null || isNaN(v) ? '—' : Number(v).toLocaleString('ru-RU'));
+  const getTok = () => { try { return localStorage.getItem(KEY) || ''; } catch (e) { return ''; } };
+  const setTok = v => { try { v ? localStorage.setItem(KEY, v) : localStorage.removeItem(KEY); } catch (e) {} };
+  let timer = null;
+
+  async function api(action, extra) {
+    if (!C.supabaseUrl) throw new Error('В js/config.js не указан адрес Supabase');
+    const r = await fetch(C.supabaseUrl + '/functions/v1/admin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: C.supabaseAnonKey, Authorization: 'Bearer ' + C.supabaseAnonKey, 'x-admin-token': getTok() },
+      body: JSON.stringify(Object.assign({ action }, extra || {}))
+    });
+    let data = null; try { data = await r.json(); } catch (e) {}
+    if (r.status === 401) throw new Error('Неверный ключ доступа');
+    if (r.status === 503) throw new Error('На сервере не задан ADMIN_TOKEN');
+    if (!r.ok) throw new Error((data && data.error) || ('Сервер ответил ' + r.status));
+    return data;
+  }
+
+  function card(label, value) { return '<div class="card"><small>' + esc(label) + '</small><b>' + esc(value) + '</b></div>'; }
+
+  async function loadLive() {
+    try {
+      const o = await api('overview');
+      $('live').innerHTML = card('Онлайн сейчас (5 мин)', num(o.online_5m)) + card('За последний час', num(o.online_1h)) + card('Активных за сутки', num(o.active_24h))
+        + card('Всего игроков', num(o.players)) + card('Новых за сутки', num(o.new_24h)) + card('Новых за 7 дней', num(o.new_7d))
+        + card('Оплат', num(o.paid)) + card('Выручка, ₽', num(o.revenue)) + card('Промокодов активировано', num(o.promo_redeemed));
+      $('authMsg').textContent = ''; $('auth').hidden = true; $('app').hidden = false; $('logout').hidden = false;
+    } catch (e) {
+      $('authMsg').className = 'msg err'; $('authMsg').textContent = e.message;
+      $('auth').hidden = false; $('app').hidden = true;
+    }
+  }
+
+  async function loadDownloads() {
+    try {
+      const r = await fetch('https://api.github.com/repos/maximlexin/mozgobum/releases?per_page=30');
+      if (!r.ok) throw new Error('GitHub ответил ' + r.status + ' (лимит запросов — подождите)');
+      const rel = await r.json();
+      let total = 0, last = null; const rows = [];
+      rel.forEach(x => (x.assets || []).forEach(a => {
+        if (!/\.apk$/i.test(a.name)) return;
+        total += a.download_count;
+        if (!last) last = { tag: x.tag_name, n: a.download_count };
+        rows.push('<tr><td>' + esc(x.tag_name || x.name) + '</td><td>' + esc(a.name) + '</td><td>' + num(a.download_count) + '</td><td>' + esc((x.published_at || '').slice(0, 10)) + '</td></tr>');
+      }));
+      $('dl').innerHTML = card('Скачиваний APK всего', num(total)) + card('Последний релиз', last ? last.tag : '—') + card('Скачиваний последнего', last ? num(last.n) : '—');
+      $('dlTable').innerHTML = '<tr><th>Релиз</th><th>Файл</th><th>Скачиваний</th><th>Дата</th></tr>' + (rows.join('') || '<tr><td colspan="4">APK в релизах не найден</td></tr>');
+    } catch (e) { $('dl').innerHTML = card('Скачивания', 'ошибка'); $('dlTable').innerHTML = '<tr><td>' + esc(e.message) + '</td></tr>'; }
+  }
+
+  function rewardText(c) {
+    const p = [];
+    if (c.gems) p.push(c.gems + ' 💎');
+    if (c.plus_days) p.push('Плюс ' + c.plus_days + ' дн.');
+    Object.keys(c.boosts || {}).forEach(k => p.push({ shield: '🛡️', fifty: '🔮', x2: '⚡' }[k] + '×' + c.boosts[k]));
+    (c.items || []).forEach(i => p.push((window.MB && MB.ITEMS && MB.ITEMS[i] && MB.ITEMS[i].title) || i));
+    return p.join(', ') || '—';
+  }
+
+  async function loadCodes() {
+    try {
+      const d = await api('promo_list');
+      const rows = (d.codes || []).map(c => '<tr><td><span class="code">' + esc(c.code) + '</span><br><small class="hint">' + esc(c.title || '') + '</small></td><td>' + esc(rewardText(c)) + '</td><td>'
+        + num(c.used) + (c.max_uses ? ' / ' + num(c.max_uses) : ' / ∞') + '</td><td>' + (c.expires_at ? esc(c.expires_at.slice(0, 10)) : '—') + '</td><td><span class="pill ' + (c.active ? 'on' : 'off') + '">' + (c.active ? 'действует' : 'выключен') + '</span></td>'
+        + '<td class="flex"><button class="ghost" data-t="' + esc(c.code) + '" data-a="' + (c.active ? '0' : '1') + '">' + (c.active ? 'Выключить' : 'Включить') + '</button><button class="ghost" data-c="' + esc(c.code) + '">Копировать</button><button class="bad" data-d="' + esc(c.code) + '">Удалить</button></td></tr>');
+      $('codes').innerHTML = '<tr><th>Код</th><th>Награда</th><th>Использовано</th><th>До</th><th>Статус</th><th></th></tr>' + (rows.join('') || '<tr><td colspan="6">Пока нет промокодов</td></tr>');
+    } catch (e) { $('codes').innerHTML = '<tr><td>' + esc(e.message) + '</td></tr>'; }
+  }
+
+  function fillItems() {
+    const box = $('pItems'); box.innerHTML = '';
+    const items = (window.MB && MB.ITEMS) || {};
+    Object.keys(items).filter(k => !items[k].plus).forEach(k => {
+      const l = document.createElement('label');
+      l.innerHTML = '<input type="checkbox" value="' + esc(k) + '"> ' + esc(items[k].title || k);
+      box.appendChild(l);
+    });
+    if (!box.children.length) box.innerHTML = '<span class="hint">Список нарядов не загрузился</span>';
+  }
+
+  function genCode() {
+    const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; const a = new Uint32Array(8); crypto.getRandomValues(a);
+    const s = Array.from(a, v => abc[v % abc.length]).join('');
+    return 'BUM-' + s.slice(0, 4) + '-' + s.slice(4);
+  }
+
+  async function createCode() {
+    const msg = $('pMsg'); msg.className = 'msg'; msg.textContent = '';
+    const code = $('pCode').value.trim().toUpperCase();
+    if (!code) { msg.className = 'msg err'; msg.textContent = 'Введите код или нажмите «Случайный»'; return; }
+    const items = [...$('pItems').querySelectorAll('input:checked')].map(i => i.value);
+    const body = {
+      code, title: $('pTitle').value.trim(), gems: +$('pGems').value || 0, plus_days: +$('pPlus').value || 0, items,
+      boosts: { shield: +$('pShield').value || 0, fifty: +$('pFifty').value || 0, x2: +$('pX2').value || 0 },
+      max_uses: $('pMax').value || null, expires_at: $('pExp').value ? $('pExp').value + 'T23:59:59+03:00' : null
+    };
+    $('create').disabled = true;
+    try {
+      await api('promo_create', body);
+      msg.className = 'msg ok'; msg.textContent = 'Создан: ' + code;
+      try { await navigator.clipboard.writeText(code); msg.textContent += ' (код скопирован)'; } catch (e) {}
+      $('pCode').value = '';
+      loadCodes();
+    } catch (e) {
+      const m = { bad_code: 'Код: 4–40 символов, латиница, цифры и дефис', code_exists: 'Такой код уже есть', empty_reward: 'Выберите хотя бы одну награду',
+        bad_reward: 'Проверьте числа в награде', bad_max_uses: 'Лимит использований — целое число от 1', bad_expires: 'Неверная дата' }[e.message];
+      msg.className = 'msg err'; msg.textContent = m || e.message;
+    }
+    $('create').disabled = false;
+  }
+
+  function enter() {
+    loadLive(); loadDownloads(); loadCodes(); fillItems();
+  }
+
+  $('saveTok').onclick = () => { setTok($('tok').value.trim()); $('tok').value = ''; enter(); };
+  $('tok').addEventListener('keydown', e => { if (e.key === 'Enter') $('saveTok').click(); });
+  $('logout').onclick = () => { setTok(''); location.reload(); };
+  $('reload').onclick = () => { loadLive(); loadDownloads(); loadCodes(); };
+  $('auto').onchange = e => { clearInterval(timer); if (e.target.checked) timer = setInterval(loadLive, 30000); };
+  $('gen').onclick = () => { $('pCode').value = genCode(); };
+  $('create').onclick = createCode;
+  $('codes').addEventListener('click', async e => {
+    const b = e.target.closest('button'); if (!b) return;
+    try {
+      if (b.dataset.t) { await api('promo_toggle', { code: b.dataset.t, active: b.dataset.a === '1' }); loadCodes(); }
+      else if (b.dataset.c) { await navigator.clipboard.writeText(b.dataset.c); b.textContent = 'Скопировано'; }
+      else if (b.dataset.d) { if (confirm('Удалить промокод ' + b.dataset.d + '? Его нельзя будет вернуть.')) { await api('promo_delete', { code: b.dataset.d }); loadCodes(); } }
+    } catch (err) { alert(err.message); }
+  });
+  window.addEventListener('mascot-ready', fillItems);
+
+  if (getTok()) enter();
+})();
+</script>
+</body>
+</html>

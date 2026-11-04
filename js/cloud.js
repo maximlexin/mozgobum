@@ -162,6 +162,11 @@ MB.cloud = (() => {
       return r.status;
     } catch (e) { return null; }
   }
+  // серверный промокод: {status: ok|not_found|expired|used_up|already|inactive, ...} или null при сбое
+  async function redeemPromo(code) {
+    if (!on()) return null;
+    try { return await callFn('promo-redeem', { player_id: pid, code }, true); } catch (e) { return null; }
+  }
   async function fetchRewards() {
     if (!on()) return [];
     try { const r = await callFn('rewards', { player_id: pid }); return (r && r.rewards) || []; } catch (e) { return []; }
@@ -184,6 +189,6 @@ MB.cloud = (() => {
   function logout() { saveSession(null); }
 
   return { on, allow: v => { allowed = !!v; if (allowed) flush(); }, pid, platform, track, flush, pushSave, pullSave, plusUntil, buy, hasPending, checkPending,
-    myCode, inviteLink, hasRef: () => !!get(LS.ref), claimReferral, fetchRewards,
+    myCode, inviteLink, hasRef: () => !!get(LS.ref), claimReferral, fetchRewards, redeemPromo,
     emailStart, emailVerify, logout, user: () => (session && session.user) || null };
 })();

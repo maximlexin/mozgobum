@@ -28,7 +28,7 @@
     seen: {},                                             // недавно показанные фиксированные вопросы (для разнообразия)
     theoryMode: 'short',                                  // какую теорию открывать: short | full
     snow: null,                                           // снегопад: null — сам (с 1 декабря по 15 января), true/false — выбор игрока
-    plusUntil: 0, plusWeek: '', plusGift: false, noAds: false,          // «Мозгобум Плюс»: до когда, неделя бесплатной заморозки, подарок по промокоду
+    plusUntil: 0, plusWeek: '', plusGift: false, noAds: false, invited: 0,          // «Мозгобум Плюс»: до когда, неделя бесплатной заморозки, подарок по промокоду
     consent: null,                                        // принятые документы: {v, at}
   });
 
@@ -173,12 +173,15 @@
     const list = await MB.cloud.fetchRewards();
     if (!list.length) return;
     for (const r of list) {
+      if (r.kind === 'gems' && ((r.reason === 'referral_inviter') || (r.reason === 'referral' && (r.amount | 0) === 100))) S.invited = (S.invited | 0) + 1;
       if (r.kind === 'gems') S.gems += r.amount | 0;
       if (r.kind === 'boost' && S.boost[r.value] !== undefined) S.boost[r.value] += r.amount | 0 || 1;
       if (r.kind === 'item' && MB.ITEMS[r.value] && !S.owned.includes(r.value)) S.owned.push(r.value);
     }
     save();
     const gems = list.filter(r => r.kind === 'gems').reduce((s, r) => s + (r.amount | 0), 0);
+    const tierItem = list.find(r => r.reason === 'referral_tier' && r.kind === 'item' && MB.ITEMS[r.value]);
+    if (tierItem) { toast(`🏆 Награда за друзей: «${MB.ITEMS[tierItem.value].title}»!`); confetti(120); MB.sound.play('finish'); render(); return; }
     toast(`🎁 Награда получена${gems ? `: +${gems} 💎` : ''}${list.some(r => r.kind === 'item') ? ' и новый наряд' : ''}!`);
     confetti(80);
     render();
@@ -1449,10 +1452,14 @@
     if (code) action = `<div class="inv-link"><code class="inv-code">${esc(code)}</code></div><div class="row-btns"><button class="btn small" data-act="invite-copy">📋 Скопировать код</button><button class="btn small ghost" data-act="invite">📤 Отправить ссылкой</button></div>`;
     else if (MB.cloud.on()) action = '<small class="muted">Код появится через минуту, когда игра свяжется с сервером.</small>';
     else action = '<button class="btn small gray" disabled>Скоро</button><small class="muted">Приглашения заработают в ближайшем обновлении.</small>';
+    const TIERS = [[1, 'значок «Лучший друг»'], [3, '«Корона дружбы» 👑'], [5, 'скин «Золотой приятель» ✨'], [10, '«Крылья дружбы» 🪽']];
+    const n = S.invited | 0;
+    const tiers = `<div class="inv-tiers"><small class="muted">Приглашено друзей: <b>${n}</b></small>${TIERS.map(([k, t]) => `<span class="${n >= k ? 'on' : ''}">${n >= k ? '✅' : '🔒'} ${k} ${k === 1 ? 'друг' : k < 5 ? 'друга' : 'друзей'} — ${t}</span>`).join('')}</div>`;
     return `<div class="card invite-card">
       <div class="inv-head"><span class="inv-ico">🤝</span><div><b>Пригласи друга</b>
         <small>Друг вводит твой код в «Профиль → Промокод». Когда он пройдёт первый урок: ему — 50 💎 и щит, тебе — 100 💎 и значок «Лучший друг».</small></div></div>
       ${action}
+      ${tiers}
     </div>`;
   }
   // Аккаунт по почте выключен по умолчанию: почта — персональные данные, а сервер находится вне РФ

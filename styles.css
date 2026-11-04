@@ -786,3 +786,8 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; -webkit-user
 
 /* Код друга вместо ссылки */
 .inv-link code.inv-code { text-align: center; font-size: 26px; font-weight: 900; letter-spacing: .12em; padding: 12px 10px; color: var(--purple); }
+
+/* Лесенка наград за приглашённых друзей */
+.inv-tiers { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; font-size: 13px; }
+.inv-tiers span { color: var(--muted); }
+.inv-tiers span.on { color: var(--green-d, var(--text)); font-weight: 800; }

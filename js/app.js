@@ -28,7 +28,7 @@
     seen: {},                                             // недавно показанные фиксированные вопросы (для разнообразия)
     theoryMode: 'short',                                  // какую теорию открывать: short | full
     snow: null,                                           // снегопад: null — сам (с 1 декабря по 15 января), true/false — выбор игрока
-    plusUntil: 0, plusWeek: '', plusGift: false, noAds: false, invited: 0,          // «Мозгобум Плюс»: до когда, неделя бесплатной заморозки, подарок по промокоду
+    plusUntil: 0, plusWeek: '', plusGift: false, noAds: false, invited: 0, backupHint: false, exported: false,          // «Мозгобум Плюс»: до когда, неделя бесплатной заморозки, подарок по промокоду
     consent: null,                                        // принятые документы: {v, at}
   });
 
@@ -794,6 +794,12 @@
   }
 
   // ---------- Урок ----------
+  // раз в жизни напоминаем про код прогресса: хранилище браузера могут очистить, а входа в игре нет
+  function backupNudge() {
+    if (S.lessons !== 8 || S.exported || S.backupHint) return;
+    S.backupHint = true;
+    setTimeout(() => toast('Сохрани код прогресса: Профиль → Скопировать код. Так он не потеряется при смене телефона'), 3500);
+  }
   function startLesson(entry, jump = false) {
     syncHearts();
     if (!entry.boss && outOfHearts()) { L = null; T('hearts_out', { where: 'start' }); go('fail'); return; }
@@ -1193,7 +1199,7 @@
         if (!old.stars) S.progress[L.entry.key].stars = 0;
       }
       if (perfect) { S.perfect++; quest('perfect', 1); }
-      S.lessons++;
+      S.lessons++; backupNudge();
       S.subjPlayed[L.subj] = true;
       quest('lessons', 1); quest('subj:' + L.subj, 1);
     } else {
@@ -1204,7 +1210,7 @@
       const old = S.progress[L.entry.key] || { stars: 0, plays: 0 };
       S.progress[L.entry.key] = { ...old, stars: Math.max(old.stars, st), plays: old.plays + 1 };
       L.stars = st;
-      S.lessons++;
+      S.lessons++; backupNudge();
       if (perfect) { S.perfect++; quest('perfect', 1); }
       S.subjPlayed[L.subj] = true;
       quest('lessons', 1); quest('subj:' + L.subj, 1);
@@ -1957,6 +1963,7 @@
     },
     rename: async () => { const n = await promptBox('Как тебя зовут?', S.name, 'Имя'); if (n !== null) { S.name = n.trim().slice(0, 20); save(); render(); } },
     export: async () => {
+      S.exported = true; save();
       const code = btoa(unescape(encodeURIComponent(JSON.stringify(S))));
       const box = $('#exportBox'); box.hidden = false; box.value = code; box.select();
       try { await navigator.clipboard.writeText(code); toast('Код скопирован! Вставь его на другом устройстве.'); }
@@ -2431,6 +2438,8 @@
   checkStreak();
   ensureQuests();
   save();
+  // просим браузер не стирать данные игры при нехватке места (где поддерживается)
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* не критично */ }
   plusPerks();
   render();
   if (brokenSaved) setTimeout(() => toast('Сохранение было повреждено. Копия сохранена отдельно, начинаем заново'), 800);

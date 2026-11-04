@@ -28,7 +28,7 @@
     seen: {},                                             // недавно показанные фиксированные вопросы (для разнообразия)
     theoryMode: 'short',                                  // какую теорию открывать: short | full
     snow: null,                                           // снегопад: null — сам (с 1 декабря по 15 января), true/false — выбор игрока
-    plusUntil: 0, plusWeek: '', plusGift: false,          // «Мозгобум Плюс»: до когда, неделя бесплатной заморозки, подарок по промокоду
+    plusUntil: 0, plusWeek: '', plusGift: false, noAds: false,          // «Мозгобум Плюс»: до когда, неделя бесплатной заморозки, подарок по промокоду
     consent: null,                                        // принятые документы: {v, at}
   });
 
@@ -108,6 +108,8 @@
   // ---------- Мозгобум Плюс ----------
   // подарочный Плюс (по промокоду) бессрочный и не зависит от сервера
   const isPlus = () => !!S.plusGift || (S.plusUntil || 0) > Date.now();
+  // реклама в игре (когда появится) не показывается с «Плюсом» и после промокода «без рекламы»
+  const adFree = () => isPlus() || !!S.noAds;
   const weekKey = () => { const d = new Date(); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return dayKey(d); };
   // бонусы Плюса: наряд навсегда и одна бесплатная заморозка серии в неделю
   function plusPerks() {
@@ -1485,7 +1487,7 @@
           <div class="row-btns"><button class="btn small" data-act="export">Скопировать код</button><button class="btn small ghost" data-act="import">Вставить код</button></div>
           <textarea id="exportBox" class="export" readonly hidden></textarea></div>
         <div class="set-row"><span>Начать заново</span><button class="btn small red" data-act="reset">Сбросить прогресс</button></div>
-        <div class="set-row"><span>Промокод${S.plusGift ? '<small class="muted" style="display:block">⭐ Плюс навсегда</small>' : ''}</span><button class="btn small ghost" data-act="promo">Ввести код</button></div>
+        <div class="set-row"><span>Промокод${S.plusGift ? '<small class="muted" style="display:block">⭐ Плюс навсегда</small>' : S.noAds ? '<small class="muted" style="display:block">🎓 Без рекламы</small>' : ''}</span><button class="btn small ghost" data-act="promo">Ввести код</button></div>
         ${MB.CONFIG.features.legal ? `<div class="set-row"><span>Документы</span><a class="btn small ghost" href="docs/" target="_blank" rel="noopener">Соглашение и политика</a></div>
         <div class="set-row col"><span>Номер учётной записи</span>
           <small class="muted">Укажи его в письме, если хочешь удалить данные с сервера или вернуть платёж.</small>
@@ -1933,6 +1935,14 @@
       if ((MB.CONFIG.devHashes || []).includes(hex)) {
         try { localStorage.setItem(DEV_KEY, '1'); } catch (e) { /* нет хранилища */ }
         toast('🛠️ Режим разработчика включён'); render();
+        return;
+      }
+      if ((MB.CONFIG.noAdsHashes || []).includes(hex)) {
+        S.noAds = true; save();
+        T('promo_redeemed', { kind: 'no_ads' });
+        MB.sound.play('finish'); confetti();
+        toast('🎓 Реклама отключена. Учись!');
+        render();
         return;
       }
       if (!(MB.CONFIG.giftHashes || []).includes(hex)) {

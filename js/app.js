@@ -1510,7 +1510,7 @@
         <div class="set-row"><span>Цель дня</span><div class="seg">${[[10, 'Легко'], [20, 'Норм'], [30, 'Серьёзно'], [50, 'Жёстко']].map(([g, t]) => `<button class="${S.goal === g ? 'on' : ''}" data-act="goal" data-g="${g}">${t}<small>${g} XP</small></button>`).join('')}</div></div>
         <div class="set-row"><span>Звук</span><button class="toggle ${S.sound ? 'on' : ''}" data-act="sound" aria-label="Звук"><i></i></button></div>
         <div class="set-row"><span>❄️ Снегопад<small class="muted" style="display:block">Сам включается с 1 декабря по 15 января</small></span><button class="toggle ${snowOn() ? 'on' : ''}" data-act="snow" aria-label="Снегопад"><i></i></button></div>
-        ${isApp() ? `<div class="set-row"><span>Напоминания<small class="muted" style="display:block">Бум напомнит в течение дня, с 9 утра до 9 вечера</small></span><button class="toggle ${S.remind.on ? 'on' : ''}" data-act="remind" aria-label="Напоминания"><i></i></button></div>`
+        ${isApp() ? `<div class="set-row"><span>Напоминания<small class="muted" style="display:block">Бум напомнит в течение дня, с 9 утра до 9 вечера${S.remind.on ? ' · <a href="#" data-act="remind-test" style="color:var(--blue)">проверить сейчас</a>' : ''}</small></span><button class="toggle ${S.remind.on ? 'on' : ''}" data-act="remind" aria-label="Напоминания"><i></i></button></div>`
         : `<div class="set-row"><span>Приложение для Android<small class="muted" style="display:block">с напоминаниями о серии</small></span><a class="btn small" data-act="apk" href="https://github.com/maximlexin/mozgobum/releases/latest/download/mozgobum.apk">📱 Скачать</a></div>`}
         ${accountRow()}
         <div class="set-row"><span>Имя</span><button class="btn small ghost" data-act="rename">${esc(S.name || 'Игрок')} ✏️</button></div>
@@ -1898,6 +1898,12 @@
       save(); render();
     },
     sound: () => { S.sound = !S.sound; save(); render(); MB.sound.play('tap'); },
+    'remind-test': async (el, ev) => {
+      if (ev) ev.preventDefault();
+      const st = await scheduleReminders(true);
+      toast({ ok: '🔔 Проверочное уведомление придёт через 5 секунд — сверни приложение', denied: '🔕 Разреши уведомления для Мозгобума в настройках телефона',
+        unavailable: '⚠️ Уведомления недоступны в этой версии приложения. Обнови приложение', off: 'Включи напоминания' }[st] || 'Не удалось');
+    },
     remind: async () => {
       S.remind.on = !S.remind.on; save(); render();
       const st = await scheduleReminders(S.remind.on);

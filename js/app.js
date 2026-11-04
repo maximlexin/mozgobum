@@ -477,39 +477,47 @@
     ],
   };
   // Ставим напоминания на 7 дней вперёд; сегодняшнее — только если сегодня ещё не играли.
-  async function scheduleReminders() {
+  // Возвращает 'ok' | 'off' | 'unavailable' (нет плагина) | 'denied' (нет разрешения). С test=true шлёт проверочное уведомление через 5 секунд.
+  const REMIND_TEST_ID = 99;
+  async function scheduleReminders(test) {
     const ln = isApp() && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
-    if (!ln) return;
+    if (!ln) return 'unavailable';
     try {
-      await ln.cancel({ notifications: REMIND_IDS.map(id => ({ id })) });
-      if (!S.remind.on) return;
+      await ln.cancel({ notifications: REMIND_IDS.concat(REMIND_TEST_ID).map(id => ({ id })) });
+      if (!S.remind.on) return 'off';
       let perm = await ln.checkPermissions();
       if (perm.display !== 'granted') perm = await ln.requestPermissions();
-      if (perm.display !== 'granted') return;
+      if (perm.display !== 'granted') return 'denied';
       const played = S.lastDay === today(), list = [];
+      if (test) list.push({ id: REMIND_TEST_ID, title: 'Мозгобум', body: 'Бум на связи! 👋 Буду напоминать в течение дня, с 9 утра до 9 вечера.', schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true } });
       // каждую группу перемешиваем один раз и раздаём по дням — за неделю тексты не повторяются
       const lazy = shuffle(NOTIFY.lazy), miss = shuffle(NOTIFY.miss);
       for (let d = 0; d < 7; d++) {
         const at = new Date();
         at.setDate(at.getDate() + d);
-        // каждый день в случайное время с 16:00 до 21:00 — так напоминания не приедаются
-        at.setHours(16 + Math.floor(Math.random() * 5), Math.floor(Math.random() * 60), 0, 0);
-        if (at.getTime() <= Date.now() || (d === 0 && played)) continue;
+        // каждый день в случайное время с 9:00 до 21:00 — так напоминания не приедаются
+        const from = d === 0 ? Math.max(9 * 60, at.getHours() * 60 + at.getMinutes() + 30) : 9 * 60;
+        if (from >= 21 * 60 || (d === 0 && played)) continue;
+        const m = from + Math.floor(Math.random() * (21 * 60 - from));
+        at.setHours(Math.floor(m / 60), m % 60, 0, 0);
+        if (at.getTime() <= Date.now()) continue;
         let pool = lazy.slice(d, d + 1);
         if (d === 0 && S.streak) pool = NOTIFY.risk;
         else if (d === 1 && played && S.streak) pool = NOTIFY.next;
         else if (d >= 3) pool = [miss[(d - 3) % miss.length]];  // давно не заходил — Бум переживает
         else if (d === 0 && dueMistakes().length >= 3) pool = NOTIFY.mistakes;
-        const s = d === 1 && played ? S.streak + 1 : S.streak;
+        const sr = d === 1 && played ? S.streak + 1 : S.streak;
         const body = pick(pool)
-          .replace('{s}', `${s} ${plural(s, ['день', 'дня', 'дней'])}`)
+          .replace('{s}', `${sr} ${plural(sr, ['день', 'дня', 'дней'])}`)
           .replace('{m}', dueMistakes().length)
           .replace('{name}', S.name || 'друг');
         list.push({ id: REMIND_IDS[d], title: pick(NOTIFY.titles), body, schedule: { at, allowWhileIdle: true } });
       }
       if (list.length) await ln.schedule({ notifications: list });
-    } catch (e) { /* без уведомлений игра работает как обычно */ }
+      return 'ok';
+    } catch (e) { return 'unavailable'; /* без уведомлений игра работает как обычно */ }
   }
+
 
   // ---------- Бустеры ----------
   const BOOSTS = {
@@ -1502,7 +1510,7 @@
         <div class="set-row"><span>Цель дня</span><div class="seg">${[[10, 'Легко'], [20, 'Норм'], [30, 'Серьёзно'], [50, 'Жёстко']].map(([g, t]) => `<button class="${S.goal === g ? 'on' : ''}" data-act="goal" data-g="${g}">${t}<small>${g} XP</small></button>`).join('')}</div></div>
         <div class="set-row"><span>Звук</span><button class="toggle ${S.sound ? 'on' : ''}" data-act="sound" aria-label="Звук"><i></i></button></div>
         <div class="set-row"><span>❄️ Снегопад<small class="muted" style="display:block">Сам включается с 1 декабря по 15 января</small></span><button class="toggle ${snowOn() ? 'on' : ''}" data-act="snow" aria-label="Снегопад"><i></i></button></div>
-        ${isApp() ? `<div class="set-row"><span>Напоминания<small class="muted" style="display:block">Бум сам напишет вечером, когда-то между 16 и 21</small></span><button class="toggle ${S.remind.on ? 'on' : ''}" data-act="remind" aria-label="Напоминания"><i></i></button></div>`
+        ${isApp() ? `<div class="set-row"><span>Напоминания<small class="muted" style="display:block">Бум напомнит в течение дня, с 9 утра до 9 вечера</small></span><button class="toggle ${S.remind.on ? 'on' : ''}" data-act="remind" aria-label="Напоминания"><i></i></button></div>`
         : `<div class="set-row"><span>Приложение для Android<small class="muted" style="display:block">с напоминаниями о серии</small></span><a class="btn small" data-act="apk" href="https://github.com/maximlexin/mozgobum/releases/latest/download/mozgobum.apk">📱 Скачать</a></div>`}
         ${accountRow()}
         <div class="set-row"><span>Имя</span><button class="btn small ghost" data-act="rename">${esc(S.name || 'Игрок')} ✏️</button></div>
@@ -1890,7 +1898,13 @@
       save(); render();
     },
     sound: () => { S.sound = !S.sound; save(); render(); MB.sound.play('tap'); },
-    remind: () => { S.remind.on = !S.remind.on; save(); render(); scheduleReminders(); toast(S.remind.on ? '🔔 Напоминания включены' : '🔕 Напоминания выключены'); },
+    remind: async () => {
+      S.remind.on = !S.remind.on; save(); render();
+      const st = await scheduleReminders(S.remind.on);
+      if (!S.remind.on) { toast('🔕 Напоминания выключены'); return; }
+      toast({ ok: '🔔 Напоминания включены — сейчас придёт проверочное', denied: '🔕 Разреши уведомления для Мозгобума в настройках телефона',
+        unavailable: '⚠️ Уведомления недоступны в этой версии приложения. Обнови приложение' }[st] || '🔔 Напоминания включены');
+    },
     rename: async () => { const n = await promptBox('Как тебя зовут?', S.name, 'Имя'); if (n !== null) { S.name = n.trim().slice(0, 20); save(); render(); } },
     export: async () => {
       const code = btoa(unescape(encodeURIComponent(JSON.stringify(S))));

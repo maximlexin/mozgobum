@@ -22,8 +22,10 @@ MB.cloud = (() => {
   try {
     const p = new URLSearchParams(location.search), code = p.get('ref');
     if (code && /^[A-Z0-9]{6,12}$/i.test(code) && !get(LS.refDone)) set(LS.ref, code.toUpperCase());
-    if (p.has('ref') || p.has('pay_return')) {
-      p.delete('ref'); p.delete('pay_return');
+    const src = p.get('src');
+    if (src && /^[a-z0-9_-]{1,20}$/i.test(src) && !get('mozgobum-src')) set('mozgobum-src', src.toLowerCase());
+    if (p.has('ref') || p.has('pay_return') || p.has('src')) {
+      p.delete('ref'); p.delete('pay_return'); p.delete('src');
       history.replaceState(null, '', location.pathname + (p.toString() ? '?' + p : ''));
     }
   } catch (e) { /* старый браузер */ }
@@ -199,6 +201,6 @@ MB.cloud = (() => {
   function logout() { saveSession(null); }
 
   return { on, allow: v => { allowed = !!v; if (allowed) flush(); }, pid, platform, track, flush, pushSave, pullSave, plusUntil, buy, hasPending, checkPending,
-    myCode, inviteLink, hasRef: () => !!get(LS.ref), claimReferral, fetchRewards, redeemPromo, useFriendCode,
+    myCode, inviteLink, hasRef: () => !!get(LS.ref), claimReferral, fetchRewards, redeemPromo, useFriendCode, src: () => get('mozgobum-src'),
     emailStart, emailVerify, logout, user: () => (session && session.user) || null };
 })();

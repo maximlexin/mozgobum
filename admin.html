@@ -21,6 +21,7 @@ h1{font-size:24px;margin:6px 0 2px}h2{font-size:18px;margin:28px 0 10px}
 label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
 input,select,textarea{width:100%;background:var(--field);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:9px 11px;font:inherit}
 .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.row.wide{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
 button{background:var(--accent);color:#fff;border:0;border-radius:10px;padding:9px 14px;font:inherit;font-weight:700;cursor:pointer}
 button.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
 button.bad{background:var(--bad)}
@@ -61,6 +62,27 @@ th{color:var(--muted);font-weight:600;font-size:12px}
   <div class="grid" id="dl"></div>
   <div class="tbl" style="margin-top:10px"><table id="dlTable"></table></div>
   <p class="hint">Данные берутся из публичной статистики релизов GitHub. Посещаемость сайта GitHub Pages здесь не видна: её GitHub показывает только в репозитории (Insights → Traffic).</p>
+
+  <h2>Подробная статистика</h2>
+  <div class="flex" id="periodBtns"><button class="ghost" data-n="7">7 дней</button><button class="ghost" data-n="14">14 дней</button><button class="ghost" data-n="30">30 дней</button></div>
+  <div class="grid" id="stTotals" style="margin-top:10px"></div>
+  <div class="row wide" style="margin-top:12px">
+    <div class="panel"><b>Воронка (уникальные игроки)</b><div id="stFunnel"></div></div>
+    <div class="panel"><b>Возврат игроков</b><div id="stRet"></div></div>
+  </div>
+  <div class="panel" style="margin-top:12px"><b>По дням</b><div class="tbl"><table id="stDaily"></table></div></div>
+  <div class="row wide" style="margin-top:12px">
+    <div class="panel"><b>Предметы: уроки и точность</b><div id="stSubj"></div></div>
+    <div class="panel"><b>Режимы</b><div id="stModes"></div></div>
+    <div class="panel"><b>Платформы (активные)</b><div id="stPlat"></div></div>
+  </div>
+  <div class="row wide" style="margin-top:12px">
+    <div class="panel"><b>Версии приложения (все игроки)</b><div id="stVer"></div></div>
+    <div class="panel"><b>Откуда пришли (метка ?src=)</b><div id="stSrc"></div></div>
+    <div class="panel"><b>Самые сложные уроки (доля ошибок)</b><div id="stHard"></div></div>
+  </div>
+  <div class="panel" style="margin-top:12px"><b>Время суток (МСК): уроков по часам</b><div id="stHours"></div></div>
+  <p class="hint">Данные анонимные и только от игроков, давших согласие. Метка источника: ссылка вида https://maximlexin.github.io/mozgobum/?src=vk запоминается при первом заходе.</p>
 
   <h2>Новый промокод</h2>
   <div class="panel">
@@ -222,14 +244,52 @@ th{color:var(--muted);font-weight:600;font-size:12px}
     $('create').disabled = false;
   }
 
+
+  // ---------- подробная статистика ----------
+  let stDays = 14;
+  const pct = v => (v == null || isNaN(v) ? '—' : (Number(v) * 100).toFixed(v < 0.1 && v > 0 ? 1 : 0) + '%');
+  function bars(el, rows, fmt) {
+    const max = Math.max(1, ...rows.map(r => Number(r[1]) || 0));
+    document.querySelector(el).innerHTML = rows.length ? rows.map(r => '<div style="display:grid;grid-template-columns:110px 1fr 70px;gap:8px;align-items:center;margin:5px 0;font-size:14px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
+      + esc(r[0]) + '</span><i style="display:block;height:10px;border-radius:6px;background:var(--accent);width:' + ((Number(r[1]) || 0) / max * 100) + '%"></i><b style="text-align:right">' + (fmt ? fmt(r[1], r) : num(r[1])) + '</b></div>').join('') : '<small class="hint">пока нет данных</small>';
+  }
+  const SUBJ = { math: 'Алгебра', geo: 'Геометрия', rus: 'Русский', phys: 'Физика', bio: 'Биология' };
+  const STEPS = { app_open: 'Открыли игру', onboarding_done: 'Прошли знакомство', lesson_start: 'Начали урок', lesson_finish: 'Закончили урок', shop_buy: 'Купили в магазине', plus_buy_click: 'Нажали «Плюс»', plus_paid: 'Оплатили «Плюс»' };
+  const MODES = { lesson: 'Урок', exam: 'Экзамен', test: 'Тест', review: 'Работа над ошибками' };
+
+  async function loadStats() {
+    document.querySelectorAll('#periodBtns button').forEach(b => { b.style.borderColor = +b.dataset.n === stDays ? 'var(--accent)' : ''; });
+    try {
+      const [st, dt] = await Promise.all([api('stats', { days: stDays }), api('details', { days: stDays })]);
+      const t = st.totals || {};
+      $('stTotals').innerHTML = card('Игроков всего', num(t.players)) + card('Активны 7 дней', num(t.players_7d_active)) + card('Активных за период', num(st.active_players))
+        + card('Уроков за всё время', num(t.lessons_finished)) + card('Уроков на игрока', num(st.avg_lessons_per_active)) + card('Приглашений', num(t.referrals));
+      const f = st.funnel || [], first = f.length ? f[0].players : 0;
+      $('stFunnel').innerHTML = f.map(x => '<div style="display:flex;justify-content:space-between;margin:5px 0;font-size:14px"><span>' + esc(STEPS[x.step] || x.step) + '</span><b>' + num(x.players) + ' <small class="hint">' + (first ? pct(x.players / first) : '') + '</small></b></div>').join('') || '<small class="hint">нет данных</small>';
+      const r = st.retention || {};
+      $('stRet').innerHTML = ['d1', 'd7'].map(k => r[k] ? '<div style="margin:8px 0"><small class="hint">Вернулись на ' + (k === 'd1' ? '2-й' : '8-й') + ' день</small><br><b style="font-size:22px">' + pct(r[k].rate) + '</b> <small class="hint">' + num(r[k].retained) + ' из ' + num(r[k].eligible) + '</small></div>' : '').join('') || '<small class="hint">нет данных</small>';
+      $('stDaily').innerHTML = '<tr><th>День</th><th>Игроков</th><th>Новых</th><th>Уроков</th><th>Выручка, ₽</th></tr>' + (st.daily || []).slice().reverse().map(d => '<tr><td>' + esc(d.day) + '</td><td>' + num(d.dau) + '</td><td>' + num(d.new_players) + '</td><td>' + num(d.lessons) + '</td><td>' + num(d.revenue) + '</td></tr>').join('');
+      const acc = {}; (dt.subjects || []).forEach(x => { acc[x.subj] = x.accuracy; });
+      bars('#stSubj', (st.subjects || []).map(x => [SUBJ[x.subj] || x.subj, x.lessons]), (v, row) => num(v) + ' · ' + pct(acc[Object.keys(SUBJ).find(k => SUBJ[k] === row[0]) || row[0]]));
+      bars('#stModes', (dt.modes || []).map(x => [MODES[x.mode] || x.mode, x.lessons]));
+      bars('#stPlat', (dt.platforms_active || []).map(x => [x.platform === 'android' ? 'Android' : x.platform === 'web' ? 'Сайт' : x.platform, x.players]));
+      bars('#stVer', (dt.versions || []).map(x => [x.version, x.players]));
+      bars('#stSrc', (dt.sources || []).map(x => [x.src, x.players]));
+      bars('#stHard', (dt.hard || []).map(x => [x.key, x.error_rate]), v => pct(v));
+      const hrs = Array.from({ length: 24 }, (_, h) => { const f = (dt.hours || []).find(x => x.hour === h); return [String(h).padStart(2, '0') + ':00', f ? f.lessons : 0]; });
+      bars('#stHours', hrs.filter(h => h[1] > 0));
+    } catch (e) { $('stTotals').innerHTML = card('Статистика', 'ошибка'); $('stFunnel').innerHTML = '<small class="hint">' + esc(e.message) + '</small>'; }
+  }
+  $('periodBtns').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; stDays = +b.dataset.n; loadStats(); });
+
   function enter() {
-    loadLive(); loadDownloads(); loadCodes(); fillItems();
+    loadLive(); loadDownloads(); loadStats(); loadCodes(); fillItems();
   }
 
   $('saveTok').onclick = () => { setTok($('tok').value.trim()); $('tok').value = ''; enter(); };
   $('tok').addEventListener('keydown', e => { if (e.key === 'Enter') $('saveTok').click(); });
   $('logout').onclick = () => { setTok(''); location.reload(); };
-  $('reload').onclick = () => { loadLive(); loadDownloads(); loadCodes(); };
+  $('reload').onclick = () => { loadLive(); loadDownloads(); loadStats(); loadCodes(); };
   $('auto').onchange = e => { clearInterval(timer); if (e.target.checked) timer = setInterval(loadLive, 30000); };
   $('gen').onclick = () => { $('pCode').value = genCode(); };
   $('create').onclick = createCode;

@@ -816,7 +816,7 @@
     </div>`;
   }
   // ---------- Черновик: поле для записей и чертежей под заданием ----------
-  const pad = { open: false, key: '', url: '', color: '', erase: false };
+  const pad = { open: false, key: '', url: '', color: '', erase: false, line: false };
   const padKey = () => (L ? L.start + ':' + L.idx : '');
   const PAD_COLORS = ['', '#ff4b4b', '#1cb0f6', '#58cc02'];
   function padHtml() {
@@ -825,6 +825,7 @@
       <div class="pad"><canvas class="pad-canvas"></canvas>
         <div class="pad-tools">
           ${PAD_COLORS.map(c => `<button class="pad-color ${!pad.erase && pad.color === c ? 'on' : ''}" data-act="pad-color" data-c="${c}" style="${c ? `background:${c}` : ''}" aria-label="Цвет"></button>`).join('')}
+          <button class="pad-line ${pad.line ? 'on' : ''}" data-act="pad-line" aria-label="Прямая линия" title="Прямая линия">📏</button>
           <button class="pad-erase ${pad.erase ? 'on' : ''}" data-act="pad-erase" aria-label="Ластик">🧽</button>
           <button class="pad-clear" data-act="pad-clear" aria-label="Очистить">🗑️</button>
         </div></div>`;
@@ -841,24 +842,40 @@
   (function initPad() {
     let d = null;
     const pos = (c, e) => { const r = c.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-    const seg = (c, a, b) => {
+    const style = c => {
       const ctx = c.getContext('2d');
       ctx.lineCap = ctx.lineJoin = 'round';
       ctx.globalCompositeOperation = pad.erase ? 'destination-out' : 'source-over';
       ctx.strokeStyle = pad.color || getComputedStyle(c).color;
       ctx.lineWidth = pad.erase ? 22 : 3;
-      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+      return ctx;
+    };
+    const seg = (c, a, b) => { const ctx = style(c); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); };
+    // ровная линия: почти горизонтальную или вертикальную выпрямляем (допуск ≈ 5°)
+    const snap = (a, b) => {
+      const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy);
+      if (len < 12) return b;
+      const ang = Math.abs(Math.atan2(dy, dx)) * 180 / Math.PI;     // 0..180
+      if (ang < 5 || ang > 175) return [b[0], a[1]];
+      if (Math.abs(ang - 90) < 5) return [a[0], b[1]];
+      return b;
     };
     document.addEventListener('pointerdown', e => {
       const c = e.target.closest && e.target.closest('.pad-canvas');
       if (!c || e.button > 0) return;
-      d = { c, pid: e.pointerId, last: pos(c, e) };
+      const start = pos(c, e);
+      d = { c, pid: e.pointerId, last: start, start, line: pad.line && !pad.erase, snapshot: null };
       try { c.setPointerCapture(e.pointerId); } catch (_) {}
-      seg(c, d.last, [d.last[0] + 0.01, d.last[1]]);   // точка от касания
+      if (d.line) d.snapshot = c.getContext('2d').getImageData(0, 0, c.width, c.height);
+      else seg(c, start, [start[0] + 0.01, start[1]]);   // точка от касания
     });
     document.addEventListener('pointermove', e => {
       if (!d || e.pointerId !== d.pid) return;
-      const p = pos(d.c, e); seg(d.c, d.last, p); d.last = p;
+      const p = pos(d.c, e);
+      if (d.line) {
+        d.c.getContext('2d').putImageData(d.snapshot, 0, 0);
+        seg(d.c, d.start, snap(d.start, p));
+      } else { seg(d.c, d.last, p); d.last = p; }
     });
     const end = e => {
       if (!d || e.pointerId !== d.pid) return;
@@ -1707,7 +1724,8 @@
     snow: () => { S.snow = !snowOn(); save(); updateSnow(); render(); },
     pad: () => { pad.open = !pad.open; mountPad(); MB.sound.play('tap'); },
     'pad-color': el => { pad.color = el.dataset.c; pad.erase = false; mountPad(); },
-    'pad-erase': () => { pad.erase = !pad.erase; mountPad(); },
+    'pad-erase': () => { pad.erase = !pad.erase; if (pad.erase) pad.line = false; mountPad(); },
+    'pad-line': () => { pad.line = !pad.line; if (pad.line) pad.erase = false; mountPad(); },
     'pad-clear': () => { pad.url = ''; mountPad(); },
     'theory-mode': el => {
       S.theoryMode = el.dataset.m; save();
@@ -2334,7 +2352,7 @@
   plusPerks();
   render();
   if (brokenSaved) setTimeout(() => toast('⚠️ Сохранение было повреждено. Копия отложена, начинаем заново.'), 800);
-  T('app_open', { onboarded: S.onboarded, plus: isPlus(), lessons: S.lessons, streak: S.streak });
+  T('app_open', { onboarded: S.onboarded, plus: isPlus(), lessons: S.lessons, streak: S.streak, src: MB.cloud.src() || '' });
   // облако работает только после согласия с документами
   let cloudStarted = false;
   function startCloud() {

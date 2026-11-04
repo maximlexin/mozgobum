@@ -97,7 +97,10 @@ th{color:var(--muted);font-weight:600;font-size:12px}
 <script>
 (function () {
   const $ = id => document.getElementById(id);
-  const C = (window.MB && MB.CONFIG) || {};
+  // публичные значения проекта (anon key открытый по задумке Supabase; доступ закрыт RLS и ключом ADMIN_TOKEN)
+  const C = Object.assign({ supabaseUrl: 'https://sylnxqhywaegbvscjari.supabase.co', supabaseAnonKey: 'sb_publishable_Yqnz4bydtX7muh8umgEcrg_ocoFLLLo' }, (window.MB && MB.CONFIG) || {});
+  if (!C.supabaseUrl) C.supabaseUrl = 'https://sylnxqhywaegbvscjari.supabase.co';
+  if (!C.supabaseAnonKey) C.supabaseAnonKey = 'sb_publishable_Yqnz4bydtX7muh8umgEcrg_ocoFLLLo';
   const KEY = 'mozgobum-admin';
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const num = v => (v == null || isNaN(v) ? '—' : Number(v).toLocaleString('ru-RU'));

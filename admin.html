@@ -128,10 +128,8 @@ th{color:var(--muted);font-weight:600;font-size:12px}
 <script>
 (function () {
   const $ = id => document.getElementById(id);
-  // публичные значения проекта (anon key открытый по задумке Supabase; доступ закрыт RLS и ключом ADMIN_TOKEN)
-  const C = Object.assign({ supabaseUrl: 'https://sylnxqhywaegbvscjari.supabase.co', supabaseAnonKey: 'sb_publishable_Yqnz4bydtX7muh8umgEcrg_ocoFLLLo' }, (window.MB && MB.CONFIG) || {});
-  if (!C.supabaseUrl) C.supabaseUrl = 'https://sylnxqhywaegbvscjari.supabase.co';
-  if (!C.supabaseAnonKey) C.supabaseAnonKey = 'sb_publishable_Yqnz4bydtX7muh8umgEcrg_ocoFLLLo';
+  // Сервер (Supabase во Франкфурте) удалён 5 ноября 2026 из-за 152-ФЗ. Новый сервер в РФ пропишем здесь, когда он появится.
+  const C = Object.assign({ supabaseUrl: '', supabaseAnonKey: '' }, (window.MB && MB.CONFIG) || {});
   const KEY = 'mozgobum-admin';
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const num = v => (v == null || isNaN(v) ? '—' : Number(v).toLocaleString('ru-RU'));
@@ -140,7 +138,7 @@ th{color:var(--muted);font-weight:600;font-size:12px}
   let timer = null;
 
   async function api(action, extra) {
-    if (!C.supabaseUrl) throw new Error('В js/config.js не указан адрес Supabase');
+    if (!C.supabaseUrl) throw new Error('Сервер отключён: статистика, промокоды и жалобы появятся после запуска сервера в России. Скачивания APK ниже работают.');
     const r = await fetch(C.supabaseUrl + '/functions/v1/admin', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: C.supabaseAnonKey, Authorization: 'Bearer ' + C.supabaseAnonKey, 'x-admin-token': getTok() },

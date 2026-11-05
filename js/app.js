@@ -852,7 +852,7 @@
       <div class="boost-chips">${boostChips()}</div>
       <div class="combo-slot">${L.combo >= 3 ? `<div class="combo-badge">🔥 ${L.combo} подряд!</div>` : ''}</div>
       <div class="qcard" key="${L.idx}">
-        <div class="qtype-row"><div class="qtype">${label}${q.title || titles[q.type]}</div><button class="report-btn" data-act="report" aria-label="Сообщить об ошибке в задании">Ошибка в задании?</button></div>
+        <div class="qtype-row"><div class="qtype">${label}${q.title || titles[q.type]}</div>${MB.cloud.on() ? '<button class="report-btn" data-act="report" aria-label="Сообщить об ошибке в задании">Ошибка в задании?</button>' : ''}</div>
         <div class="q-head"><div class="q-mascot">${MB.mascot('happy', S.look)}</div><h2 class="qtext">${q.q}</h2></div>
         <div class="qbody">${bodyHtml(q)}</div>
         <div class="pad-box">${padHtml()}</div>

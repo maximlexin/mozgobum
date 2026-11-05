@@ -1,7 +1,7 @@
 // Офлайн-кэш. При изменении файлов игры поднимай VERSION, чтобы телефоны получили обновление.
-const VERSION = 'mozgobum-v33';
+const VERSION = 'mozgobum-v34';
 const FILES = [
-  './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
+  './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icons/icon.svg', 'fonts/nunito.css', 'fonts/nunito-cyrillic-ext.woff2', 'fonts/nunito-cyrillic.woff2', 'fonts/nunito-latin-ext.woff2', 'fonts/nunito-latin.woff2', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/util.js', 'js/config.js', 'js/cloud.js', 'js/content-math.js', 'js/content-geometry.js', 'js/content-russian.js',
   'js/content-physics.js', 'js/content-biology.js', 'js/theory-math.js', 'js/theory-geometry.js', 'js/theory-russian.js', 'js/theory-physics.js', 'js/theory-biology.js', 'js/mascot.js', 'js/scene.js', 'js/sound.js', 'js/app.js',
 ];

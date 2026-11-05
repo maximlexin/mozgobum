@@ -28,7 +28,7 @@
     seen: {},                                             // недавно показанные фиксированные вопросы (для разнообразия)
     theoryMode: 'short',                                  // какую теорию открывать: short | full
     snow: null,                                           // снегопад: null — сам (с 1 декабря по 15 января), true/false — выбор игрока
-    plusUntil: 0, plusWeek: '', plusGift: false, noAds: false, invited: 0, backupHint: false, exported: false,          // «Мозгобум Плюс»: до когда, неделя бесплатной заморозки, подарок по промокоду
+    plusUntil: 0, plusWeek: '', plusGift: false, noAds: false, usedCodes: [], invited: 0, backupHint: false, exported: false,          // «Мозгобум Плюс»: до когда, неделя бесплатной заморозки, подарок по промокоду
     consent: null,                                        // принятые документы: {v, at}
   });
 
@@ -2031,6 +2031,17 @@
       if ((MB.CONFIG.devHashes || []).includes(hex)) {
         try { localStorage.setItem(DEV_KEY, '1'); } catch (e) { /* нет хранилища */ }
         toast('Режим разработчика включён'); render();
+        return;
+      }
+      // «Плюс на N дней» по готовому коду (выдаётся вручную после оплаты, работает без сервера)
+      const plusDays = (MB.CONFIG.plusCodes || {})[hex];
+      if (plusDays) {
+        if (MB.CONFIG.plusCodesUntil && Date.now() > Date.parse(MB.CONFIG.plusCodesUntil + 'T23:59:59')) { toast('Срок действия кода закончился'); return; }
+        if ((S.usedCodes || []).includes(hex)) { toast('Этот код уже активирован на этом устройстве'); return; }
+        S.usedCodes = (S.usedCodes || []).concat(hex);
+        activatePlus(Math.max(Date.now(), S.plusUntil || 0) + plusDays * DAY, false);
+        T('promo_redeemed', { kind: 'plus_code' });
+        render();
         return;
       }
       if ((MB.CONFIG.noAdsHashes || []).includes(hex)) {

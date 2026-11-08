@@ -835,3 +835,17 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; -webkit-user
 .next-alt:hover { background: var(--surface-2); }
 
 .tests-sub { font-size: var(--fs-lg); margin: 24px 0 10px; }
+
+/* Экран «Для родителей» */
+.par-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 10px; margin: 12px 0; }
+.par-card { background: var(--surface); border: 2px solid var(--line); border-radius: var(--r-lg); padding: 12px; display: flex; flex-direction: column; gap: 4px; }
+.par-card b { font-size: var(--fs-2xl); font-weight: 900; line-height: 1.1; }
+.par-card small { color: var(--muted); font-size: var(--fs-xs); line-height: 1.3; }
+.par-subj { display: flex; flex-direction: column; gap: 12px; }
+.par-row { display: grid; grid-template-columns: 96px 1fr auto; gap: 10px; align-items: center; font-size: var(--fs-sm); font-weight: 800; }
+.par-row .pbar { height: 10px; }
+.par-row em { grid-column: 2 / 4; font-style: normal; color: var(--muted); font-size: var(--fs-xs); margin-top: -6px; }
+.par-note p { margin: 0 0 8px; font-size: var(--fs-sm); line-height: 1.45; }
+.par-note p:last-child { margin-bottom: 0; }
+.par-entry { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 16px 0 4px; }
+.par-entry small { font-size: var(--fs-sm); }

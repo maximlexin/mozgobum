@@ -28,7 +28,7 @@
     seen: {},                                             // недавно показанные фиксированные вопросы (для разнообразия)
     theoryMode: 'short',                                  // какую теорию открывать: short | full
     snow: null,                                           // снегопад: null — сам (с 1 декабря по 15 января), true/false — выбор игрока
-    plusUntil: 0, plusWeek: '', plusGift: false, noAds: false, usedCodes: [], invited: 0, backupHint: false, exported: false,          // «Мозгобум Плюс»: до когда, неделя бесплатной заморозки, подарок по промокоду
+    plusUntil: 0, plusWeek: '', plusGift: false, noAds: false, usedCodes: [], log: {}, invited: 0, backupHint: false, exported: false,          // «Мозгобум Плюс»: до когда, неделя бесплатной заморозки, подарок по промокоду
     consent: null,                                        // принятые документы: {v, at}
   });
 
@@ -635,7 +635,7 @@
     ['learn', NAV_ICONS.learn, 'Учиться'], ['quests', NAV_ICONS.quests, 'Задания'], ['shop', NAV_ICONS.shop, 'Магазин'], ['profile', NAV_ICONS.profile, 'Профиль'],
   ];
   // «Тесты» и «Ошибки» открываются из карточки «Что дальше», при этом вкладка «Учиться» остаётся подсвеченной
-  const navActive = id => view === id || (id === 'learn' && (view === 'tests' || view === 'review'));
+  const navActive = id => view === id || (id === 'learn' && (view === 'tests' || view === 'review')) || (id === 'profile' && view === 'parents');
   function badge(id) {
     if (id === 'review') { const n = dueMistakes().length; return n ? `<span class="badge">${n}</span>` : ''; }
     if (id === 'quests') { const n = claimable(); return n ? '<span class="badge dot">!</span>' : ''; }
@@ -1219,6 +1219,10 @@
     if (doubled) xp *= 2;
     S.xp += xp; S.gems += gems;
     S.days[t] = before + xp;
+    // лёгкий журнал по дням для экрана «Для родителей»: уроки, верные и неверные ответы, секунды
+    const lg = S.log[t] || (S.log[t] = { l: 0, c: 0, w: 0, s: 0 });
+    lg.l++; lg.c += L.correct || 0; lg.w += L.wrong || 0; lg.s += Math.max(0, Math.min(3600, Math.round((Date.now() - (L.start || Date.now())) / 1000)));
+    Object.keys(S.log).sort().slice(0, -60).forEach(k => delete S.log[k]);
     quest('xp', xp);
     S.bestCombo = Math.max(S.bestCombo, L.maxCombo);
     const streakUp = bumpStreak();
@@ -1299,6 +1303,59 @@
       <button class="btn big blue" data-act="buy" data-item="hearts" ${S.gems >= 50 ? '' : 'disabled'}>Восстановить за 50 💎</button>
       <button class="btn big ghost" data-act="nav" data-v="learn">На карту</button>
     </div>`;
+  }
+
+  // ---------- Для родителей: недельная сводка из данных на устройстве ----------
+  function parentData() {
+    const days = [], now = new Date();
+    for (let i = 6; i >= 0; i--) { const d = new Date(now); d.setDate(now.getDate() - i); days.push(dayKey(d)); }
+    const active = days.filter(k => (S.days[k] || 0) > 0).length;
+    const xp = days.reduce((a, k) => a + (S.days[k] || 0), 0);
+    const lg = days.map(k => S.log[k] || { l: 0, c: 0, w: 0, s: 0 });
+    const lessons = lg.reduce((a, x) => a + x.l, 0), cor = lg.reduce((a, x) => a + x.c, 0), wr = lg.reduce((a, x) => a + x.w, 0);
+    const minutes = Math.round(lg.reduce((a, x) => a + x.s, 0) / 60);
+    const subjects = MB.subjects.map(sb => {
+      const path = pathOf(sb).filter(e => !e.final), done = path.filter(e => stars(e.key)).length;
+      const grades = Object.keys(S.tests).filter(k => k.startsWith(sb.id + ':')).map(k => S.tests[k].best || 0);
+      return { id: sb.id, title: sb.title, done, total: path.length, pct: path.length ? Math.round(done / path.length * 100) : 0, test: grades.length ? Math.max(...grades) : 0,
+        mistakes: S.mistakes.filter(m => m.subj === sb.id).length };
+    });
+    return { active, xp, lessons, minutes, acc: cor + wr ? Math.round(cor / (cor + wr) * 100) : null, subjects, due: dueMistakes().length,
+      tracked: S.lessons === 0 || Object.keys(S.log).length > 0 };
+  }
+  function parentText(d) {
+    const name = S.name || 'Ученик';
+    const subj = d.subjects.filter(x => x.done).map(x => `${x.title}: пройдено ${x.done} из ${x.total}${x.test ? `, лучший тест ${x.test}` : ''}`);
+    const weak = d.subjects.filter(x => x.mistakes >= 3).sort((a, b) => b.mistakes - a.mistakes).slice(0, 2).map(x => x.title);
+    return [`Мозгобум: итоги недели, ${name}`,
+      `Занимался дней: ${d.active} из 7. Серия сейчас: ${S.streak}.`,
+      d.lessons ? `Заданий пройдено: ${d.lessons} (${d.minutes} мин)${d.acc !== null ? `, верных ответов ${d.acc} %` : ''}.` : null,
+      subj.length ? 'Прогресс: ' + subj.join('; ') + '.' : null,
+      weak.length ? `Стоит повторить: ${weak.join(', ')}.` : null].filter(Boolean).join('\n');
+  }
+  function parentsView() {
+    const d = parentData();
+    const card = (v, l) => `<div class="par-card"><b>${v}</b><small>${l}</small></div>`;
+    const weak = d.subjects.filter(x => x.mistakes >= 3).sort((a, b) => b.mistakes - a.mistakes).slice(0, 3);
+    return `<button class="btn small ghost" data-act="nav" data-v="profile">← Профиль</button>
+      <h1 class="page-title">Для родителей</h1>
+      <p class="muted">Итоги последних 7 дней. Данные хранятся только на этом устройстве и никуда не отправляются.</p>
+      <div class="par-grid">
+        ${card(`${d.active} / 7`, 'дней занимался')}
+        ${card(S.streak, 'серия дней')}
+        ${card(d.lessons || '—', d.tracked ? 'заданий пройдено' : 'заданий (считаем с этого обновления)')}
+        ${card(d.minutes ? d.minutes + ' мин' : '—', 'время в игре')}
+        ${card(d.acc !== null ? d.acc + ' %' : '—', 'верных ответов')}
+        ${card(d.xp, 'опыта за неделю')}
+      </div>
+      <h3 class="sec">По предметам</h3>
+      <div class="card par-subj">${d.subjects.map(x => `<div class="par-row"><span>${esc(x.title)}</span><div class="pbar"><div style="width:${x.pct}%"></div></div><b>${x.done}/${x.total}</b>${x.test ? `<em title="Лучшая оценка за тест">лучший тест: ${x.test}</em>` : ''}</div>`).join('')}</div>
+      ${weak.length || d.due ? `<h3 class="sec">На что обратить внимание</h3>
+      <div class="card par-note">${weak.length ? `<p>Больше всего ошибок: ${weak.map(x => `<b>${esc(x.title)}</b> (${x.mistakes})`).join(', ')}.</p>` : ''}${d.due ? `<p>Задач в «Ошибках» на повтор: <b>${d.due}</b>. Достаточно пары минут в день.</p>` : ''}</div>` : ''}
+      <h3 class="sec">Как помочь</h3>
+      <div class="card par-note"><p>Лучше 5 минут каждый день, чем долгое занятие раз в неделю: серия дней помогает привычке.</p>
+        <p>Спросите, какой урок был самым интересным, и пусть объяснит вам одну тему своими словами.</p></div>
+      <button class="btn big" data-act="parents-share">Отправить итоги родителям</button>`;
   }
 
   // ---------- Тесты (как контрольная: без подсказок, разбор в конце) ----------
@@ -1543,6 +1600,7 @@
       <h3 class="sec">Опыт за неделю</h3>
       <div class="card chart">${week.map(w => `<div class="bar-col"><div class="bar-v">${w.xp || ''}</div><div class="bar" style="height:${Math.max(4, w.xp / max * 120)}px;${w.xp >= S.goal ? '' : 'opacity:.55'}"></div><small>${w.label}</small></div>`).join('')}
         <div class="goal-line-chart" style="bottom:${28 + S.goal / max * 120}px"><span>цель</span></div></div>
+      <div class="card par-entry"><div><b>Для родителей</b><small class="muted" style="display:block">Итоги недели: сколько занимался, что получается, что повторить</small></div><button class="btn small" data-act="nav" data-v="parents">Открыть</button></div>
       <h3 class="sec">Настройки</h3>
       <div class="card settings">
         <div class="set-row"><span>Цель дня</span><div class="seg">${[[10, 'Легко'], [20, 'Норм'], [30, 'Серьёзно'], [50, 'Жёстко']].map(([g, t]) => `<button class="${S.goal === g ? 'on' : ''}" data-act="goal" data-g="${g}">${t}<small>${g} XP</small></button>`).join('')}</div></div>
@@ -1715,6 +1773,7 @@
     if (view === 'fail') { app.innerHTML = failView(); return; }
     if (['lesson', 'result', 'streak'].includes(view)) view = 'learn';
     const pages = { learn: learnView, tests: testsView, review: reviewView, quests: questsView, shop: shopView, profile: profileView,
+      parents: parentsView,
       stats: () => (isDev() ? statsView() : learnView()) };
     app.innerHTML = shell((pages[view] || learnView)());
     if (view === 'learn') MB.scene.decorate(app);
@@ -2082,6 +2141,13 @@
       MB.sound.play('finish'); confetti();
       toast('🎁 Промокод принят: Мозгобум Плюс навсегда!');
       render();
+    },
+    'parents-share': async () => {
+      const text = parentText(parentData());
+      try {
+        if (navigator.share) { await navigator.share({ title: 'Мозгобум: итоги недели', text }); return; }
+        await navigator.clipboard.writeText(text); toast('Итоги скопированы. Вставьте их в сообщение родителям');
+      } catch (e) { if (e && e.name !== 'AbortError') ask({ title: 'Скопируйте итоги и отправьте родителям', input: text, ok: 'Готово', cancel: false }); }
     },
     'invite-copy': async () => {
       const code = MB.cloud.myCode(); if (!code) return;

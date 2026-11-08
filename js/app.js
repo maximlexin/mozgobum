@@ -1418,9 +1418,9 @@
     else if (MB.cloud.hasPending()) btn = '<button class="btn big blue" data-act="plus-check">⏳ Проверить оплату</button>';
     else if (MB.cloud.on()) btn = `<button class="btn big gold" data-act="plus-buy">${isPlus() ? 'Продлить' : 'Подключить'} за ${P.price} ₽ на ${P.days} дней</button>`;
     else if (isDev()) btn = '<button class="btn big gold" data-act="plus-buy">🧪 Тестовая покупка (DEV)</button>';
-    else btn = '<button class="btn big gray" disabled>Скоро будет доступно</button>';
+    else btn = `<button class="btn big gray" disabled>${P.price} ₽ на ${P.days} дней · оплата скоро откроется</button>`;
     return `<div class="card plus-card ${isPlus() ? 'active' : ''}">
-      <div class="plus-head"><span class="plus-logo">⭐ Мозгобум Плюс</span>${isPlus() && !S.plusGift ? `<span class="plus-left">ещё ${left} ${plural(left, ['день', 'дня', 'дней'])}</span>` : ''}</div>
+      <div class="plus-head"><span class="plus-logo">⭐ Мозгобум Плюс · ${P.price} ₽ / ${P.days} дней</span>${isPlus() && !S.plusGift ? `<span class="plus-left">ещё ${left} ${plural(left, ['день', 'дня', 'дней'])}</span>` : ''}</div>
       <ul class="plus-perks">${perks.map(p => `<li>${p}</li>`).join('')}</ul>
       ${btn}
       <small class="muted">Разовый платёж без автопродления. Учёба бесплатна и без Плюса.

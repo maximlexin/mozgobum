@@ -132,9 +132,11 @@
     toast(test ? '🧪 Тестовый Плюс подключён (деньги не списаны)' : '⭐ Плюс подключён! Спасибо, что поддерживаешь Мозгобум');
     render();
   }
+  // платёжный бэкенд: свой сервер (MB.pay, ЮKassa) или облако; пока ни один не настроен, оплата выключена
+  const PAY = () => (MB.pay && MB.pay.on() ? MB.pay : MB.cloud);
   // спрашиваем сервер, прошла ли оплата (после возврата со страницы оплаты или из браузера в приложение)
   async function checkPayment(manual) {
-    const r = await MB.cloud.checkPending();
+    const r = await PAY().checkPending();
     if (!r) { if (manual) toast('Не получилось проверить оплату. Попробуй позже'); return; }
     if (r.status === 'paid' && r.plus_until) activatePlus(Date.parse(r.plus_until));
     else if (r.status === 'canceled') { toast('Оплата отменена — деньги не списаны'); render(); }
@@ -1472,8 +1474,8 @@
     const perks = ['❤️ Бесконечные сердца', '🧊 Бесплатная заморозка серии каждую неделю', '⭐ Звёздная корона для Бума навсегда', '💜 Поддержка Мозгобума'];
     let btn;
     if (S.plusGift) btn = '<div class="plus-left">🎁 У тебя подарочный Плюс навсегда</div>';
-    else if (MB.cloud.hasPending()) btn = '<button class="btn big blue" data-act="plus-check">⏳ Проверить оплату</button>';
-    else if (MB.cloud.on()) btn = `<button class="btn big gold" data-act="plus-buy">${isPlus() ? 'Продлить' : 'Подключить'} за ${P.price} ₽ на ${P.days} дней</button>`;
+    else if (PAY().hasPending()) btn = '<button class="btn big blue" data-act="plus-check">⏳ Проверить оплату</button>';
+    else if (PAY().on()) btn = `<button class="btn big gold" data-act="plus-buy">${isPlus() ? 'Продлить' : 'Подключить'} за ${P.price} ₽ на ${P.days} дней</button>`;
     else if (isDev()) btn = '<button class="btn big gold" data-act="plus-buy">🧪 Тестовая покупка (DEV)</button>';
     else btn = `<button class="btn big gray" disabled>${P.price} ₽ на ${P.days} дней · оплата скоро откроется</button>`;
     return `<div class="card plus-card ${isPlus() ? 'active' : ''}">
@@ -2057,8 +2059,8 @@
     'consent-ok': () => { if (!consentOk()) return; acceptConsent(); save(); render(); },
     // ----- Плюс и оплата -----
     'plus-buy': async el => {
-      T('plus_buy_click', { renew: isPlus(), online: MB.cloud.on() });
-      if (!MB.cloud.on()) {
+      T('plus_buy_click', { renew: isPlus(), online: PAY().on() });
+      if (!PAY().on()) {
         if (isDev() && await confirmBox('Тестовая покупка: деньги не списываются. Подключить Плюс на 30 дней?', 'Подключить')) {
           activatePlus(Math.max(Date.now(), S.plusUntil || 0) + MB.CONFIG.plus.days * DAY, true);
         }
@@ -2066,7 +2068,7 @@
       }
       el.disabled = true;
       el.textContent = 'Открываем оплату…';
-      try { await MB.cloud.buy(MB.CONFIG.plus.sku); }
+      try { await PAY().buy(MB.CONFIG.plus.sku); }
       catch (e) { toast('Не получилось начать оплату. Проверь интернет и попробуй ещё раз'); render(); }
     },
     'plus-check': () => checkPayment(true),
@@ -2527,8 +2529,8 @@
     if (cloudStarted || !S.consent) return;
     cloudStarted = true;
     MB.cloud.allow(true);
+    if (PAY().on() && PAY().hasPending()) checkPayment(false);
     if (!MB.cloud.on()) return;
-    if (MB.cloud.hasPending()) checkPayment(false);
     syncPlus();
     applyRewards();
     cloudRestore();
@@ -2542,7 +2544,7 @@
   });
   document.addEventListener('visibilitychange', () => {
     // вернулись из браузера после оплаты (в Android-приложении) — проверяем платёж
-    if (document.visibilityState === 'visible' && MB.cloud.on() && MB.cloud.hasPending()) checkPayment(false);
+    if (document.visibilityState === 'visible' && PAY().on() && PAY().hasPending()) checkPayment(false);
   });
   if (S.onboarded) scheduleReminders();
   setInterval(() => {

@@ -10,6 +10,8 @@ MB.CONFIG = {
   features: { plus: true, legal: true },
   appVersion: '1.1.0',
   plus: { sku: 'plus_30', price: 49, days: 30 },
+  // Адрес платёжного сервера (backend/pay-server). Пусто: оплата выключена, кнопка «оплата скоро откроется».
+  payApi: '',
   docsVersion: '1.0',
   // Подарочные промокоды на бессрочный Плюс: здесь только SHA-256 кодов, сами коды не хранятся.
   giftHashes: ['694d36d8de454e1d8f71b9b44d82913d3ed199965394aba2bc5205334f743d6d'],

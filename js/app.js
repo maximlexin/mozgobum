@@ -2067,9 +2067,9 @@
       }
       S.onboarded = true; S.quests.day = ''; ensureQuests(); save();
       T('onboarding_done', { goal: S.goal });
-      MB.sound.play('finish'); confetti(); render(); scheduleReminders();
+      MB.sound.play('finish'); confetti(); render(); scheduleReminders(); offerLinkCode();
     },
-    'consent-ok': () => { if (!consentOk()) return; acceptConsent(); save(); render(); },
+    'consent-ok': () => { if (!consentOk()) return; acceptConsent(); save(); render(); offerLinkCode(); },
     // ----- Плюс и оплата -----
     'plus-buy': async el => {
       if (!S.payConsent && !isDev()) return;
@@ -2104,67 +2104,9 @@
     'stats-reload': () => loadStats(),
     'stats-days': el => { stats.days = Number(el.dataset.n); stats.data = null; loadStats(); render(); },
     promo: async () => {
-      const code = ((await promptBox('Промокод', '', 'BUM-XXXX-XXXX', 'Активировать')) || '').trim().toUpperCase();
+      const code = normCode(await promptBox('Промокод', '', 'BUM-XXXX-XXXX-XXXX-XXXX', 'Активировать'));
       if (!code) return;
-      let hex = '';
-      try {
-        const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code));
-        hex = [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
-      } catch (e) { toast('Промокод можно ввести только на сайте или в приложении'); return; }
-      if ((MB.CONFIG.devHashes || []).includes(hex)) {
-        try { localStorage.setItem(DEV_KEY, '1'); } catch (e) { /* нет хранилища */ }
-        toast('Режим разработчика включён'); render();
-        return;
-      }
-      // «Плюс на N дней» по готовому коду (выдаётся вручную после оплаты, работает без сервера)
-      const plusDays = (MB.CONFIG.plusCodes || {})[hex];
-      if (plusDays) {
-        if (MB.CONFIG.plusCodesUntil && Date.now() > Date.parse(MB.CONFIG.plusCodesUntil + 'T23:59:59')) { toast('Срок действия кода закончился'); return; }
-        if ((S.usedCodes || []).includes(hex)) { toast('Этот код уже активирован на этом устройстве'); return; }
-        S.usedCodes = (S.usedCodes || []).concat(hex);
-        activatePlus(Math.max(Date.now(), S.plusUntil || 0) + plusDays * DAY, false);
-        T('promo_redeemed', { kind: 'plus_code' });
-        render();
-        return;
-      }
-      if ((MB.CONFIG.noAdsHashes || []).includes(hex)) {
-        S.noAds = true; save();
-        T('promo_redeemed', { kind: 'no_ads' });
-        MB.sound.play('finish'); confetti();
-        toast('🎓 Реклама отключена. Учись!');
-        render();
-        return;
-      }
-      if (!(MB.CONFIG.giftHashes || []).includes(hex)) {
-        // не подарочный код — спрашиваем сервер (если облако включено)
-        const r = await MB.cloud.redeemPromo(code);
-        // не промокод — возможно, это код друга (6–12 букв и цифр)
-        if ((!r || r.status === 'not_found') && /^[A-Z0-9]{6,12}$/.test(code)) {
-          const st = await MB.cloud.useFriendCode(code);
-          const fmsg = { rewarded: '🎁 Код друга принят! Награда у тебя', need_lesson: '✅ Код друга принят! Пройди первый урок — и получишь награду',
-            invalid: 'Такого кода нет', self: 'Это твой собственный код', already: 'Код друга ты уже вводил' }[st];
-          if (st === 'rewarded') { await applyRewards(); MB.sound.play('finish'); confetti(); }
-          if (st) T('referral_claimed', { status: st, manual: true });
-          toast(fmsg || (st ? 'Код не подошёл' : 'Такого промокода нет'));
-          return;
-        }
-        if (!r) { toast('Такого промокода нет'); return; }
-        const msg = { not_found: 'Такого промокода нет', expired: 'Срок действия промокода закончился', used_up: 'Промокод уже использовали все',
-          already: 'Ты уже активировал этот промокод', inactive: 'Промокод сейчас не действует' }[r.status];
-        if (msg) { toast(msg); return; }
-        T('promo_redeemed', {});
-        if (r.no_ads) { S.noAds = true; save(); }
-        await applyRewards(); await syncPlus();
-        MB.sound.play('finish'); confetti();
-        toast(`🎁 Промокод принят${r.title ? ': ' + r.title : ''}!`);
-        return;
-      }
-      S.plusGift = true;
-      plusPerks(); save();
-      T('promo_redeemed', {});
-      MB.sound.play('finish'); confetti();
-      toast('🎁 Промокод принят: Мозгобум Плюс навсегда!');
-      render();
+      await redeemCode(code);
     },
     'parents-share': async () => {
       const text = parentText(parentData());
@@ -2539,6 +2481,88 @@
     })(t0);
   }
 
+  // Проверка и активация кода (ввод вручную и ссылка ?code=)
+  const normCode = v => String(v || '').replace(/\s+/g, '').toUpperCase();
+  async function redeemCode(code) {
+    let hex = '';
+  try {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code));
+    hex = [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch (e) { toast('Промокод можно ввести только на сайте или в приложении'); return; }
+  if ((MB.CONFIG.plusRevoked || []).includes(hex)) { toast('Этот код отозван'); return; }
+  if ((MB.CONFIG.devHashes || []).includes(hex)) {
+    try { localStorage.setItem(DEV_KEY, '1'); } catch (e) { /* нет хранилища */ }
+    toast('Режим разработчика включён'); render();
+    return;
+  }
+  // «Плюс на N дней» по готовому коду (выдаётся вручную после оплаты, работает без сервера)
+  const plusDays = (MB.CONFIG.plusCodes || {})[hex];
+  if (plusDays) {
+    if (MB.CONFIG.plusCodesUntil && Date.now() > Date.parse(MB.CONFIG.plusCodesUntil + 'T23:59:59')) { toast('Срок действия кода закончился'); return; }
+    if ((S.usedCodes || []).includes(hex)) { toast('Этот код уже активирован на этом устройстве'); return; }
+    S.usedCodes = (S.usedCodes || []).concat(hex);
+    activatePlus(Math.max(Date.now(), S.plusUntil || 0) + plusDays * DAY, false);
+    T('promo_redeemed', { kind: 'plus_code' });
+    render();
+    return;
+  }
+  if ((MB.CONFIG.noAdsHashes || []).includes(hex)) {
+    S.noAds = true; save();
+    T('promo_redeemed', { kind: 'no_ads' });
+    MB.sound.play('finish'); confetti();
+    toast('🎓 Реклама отключена. Учись!');
+    render();
+    return;
+  }
+  if (!(MB.CONFIG.giftHashes || []).includes(hex)) {
+    // не подарочный код — спрашиваем сервер (если облако включено)
+    const r = await MB.cloud.redeemPromo(code);
+    // не промокод — возможно, это код друга (6–12 букв и цифр)
+    if ((!r || r.status === 'not_found') && /^[A-Z0-9]{6,12}$/.test(code)) {
+      const st = await MB.cloud.useFriendCode(code);
+      const fmsg = { rewarded: '🎁 Код друга принят! Награда у тебя', need_lesson: '✅ Код друга принят! Пройди первый урок — и получишь награду',
+        invalid: 'Такого кода нет', self: 'Это твой собственный код', already: 'Код друга ты уже вводил' }[st];
+      if (st === 'rewarded') { await applyRewards(); MB.sound.play('finish'); confetti(); }
+      if (st) T('referral_claimed', { status: st, manual: true });
+      toast(fmsg || (st ? 'Код не подошёл' : 'Такого промокода нет'));
+      return;
+    }
+    if (!r) { toast('Такого промокода нет'); return; }
+    const msg = { not_found: 'Такого промокода нет', expired: 'Срок действия промокода закончился', used_up: 'Промокод уже использовали все',
+      already: 'Ты уже активировал этот промокод', inactive: 'Промокод сейчас не действует' }[r.status];
+    if (msg) { toast(msg); return; }
+    T('promo_redeemed', {});
+    if (r.no_ads) { S.noAds = true; save(); }
+    await applyRewards(); await syncPlus();
+    MB.sound.play('finish'); confetti();
+    toast(`🎁 Промокод принят${r.title ? ': ' + r.title : ''}!`);
+    return;
+  }
+  S.plusGift = true;
+  plusPerks(); save();
+  T('promo_redeemed', {});
+  MB.sound.play('finish'); confetti();
+  toast('🎁 Промокод принят: Мозгобум Плюс навсегда!');
+  render();
+  }
+
+  // Код из ссылки ?code=: читаем один раз, сразу убираем из адреса, в хранилище не кладём
+  let linkCode = '';
+  try {
+    const u = new URL(location.href);
+    if (u.searchParams.has('code')) {
+      linkCode = normCode(u.searchParams.get('code'));
+      u.searchParams.delete('code');
+      history.replaceState(null, '', u.pathname + (u.search || '') + u.hash);
+    }
+  } catch (e) { /* без URL API просто игнорируем */ }
+  function offerLinkCode() {
+    if (!linkCode || !S.onboarded || (MB.CONFIG.features.legal && !S.consent)) return;
+    const c = linkCode; linkCode = '';
+    ask({ title: 'Активировать код из ссылки?', text: 'Код из ссылки будет применён в этой игре.', ok: 'Да', cancel: 'Нет' })
+      .then(yes => { if (yes) redeemCode(c); });
+  }
+
   // ---------- Старт ----------
   if (location.hostname === 'localhost') window.__mb = { lesson: () => L, state: () => S }; // для отладки
   syncHearts();
@@ -2564,6 +2588,7 @@
     cloudRestore();
   }
   startCloud();
+  offerLinkCode();
   // пейзажи рассчитаны под ширину экрана — при повороте телефона или изменении окна перерисовываем
   let resizeTimer = null;
   addEventListener('resize', () => {

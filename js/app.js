@@ -28,7 +28,7 @@
     seen: {},                                             // недавно показанные фиксированные вопросы (для разнообразия)
     theoryMode: 'short',                                  // какую теорию открывать: short | full
     snow: null,                                           // снегопад: null — сам (с 1 декабря по 15 января), true/false — выбор игрока
-    plusUntil: 0, plusWeek: '', plusGift: false, noAds: false, usedCodes: [], payLinkAt: 0, log: {}, invited: 0, backupHint: false, exported: false,          // «Мозгобум Плюс»: до когда, неделя бесплатной заморозки, подарок по промокоду
+    plusUntil: 0, plusWeek: '', plusGift: false, noAds: false, usedCodes: [], payLinkAt: 0, payConsent: 0, log: {}, invited: 0, backupHint: false, exported: false,          // «Мозгобум Плюс»: до когда, неделя бесплатной заморозки, подарок по промокоду
     consent: null,                                        // принятые документы: {v, at}
   });
 
@@ -1474,6 +1474,7 @@
   const achGrid = () => `<div class="ach-grid">${ACH.map(a => `<div class="ach ${S.achievements[a.id] ? 'got' : ''}"><div class="a-ico">${a.icon}</div><b>${a.title}</b><small>${a.text}</small></div>`).join('')}</div>`;
 
   // ---------- Магазин ----------
+  const payConsentBox = () => `<label class="consent pay-consent"><input type="checkbox" id="payConsent" ${S.payConsent ? 'checked' : ''}><span>Я прочитал(а) <a href="docs/offer.html" target="_blank" rel="noopener">оферту</a> и <a href="docs/privacy.html" target="_blank" rel="noopener">политику</a>, согласен(на) на обработку почты для выдачи кода. Платит родитель или я с его согласия</span></label>`;
   function plusCard() {
     if (!MB.CONFIG.features.plus) return '';
     const P = MB.CONFIG.plus, left = Math.max(1, Math.ceil(((S.plusUntil || 0) - Date.now()) / DAY));
@@ -1481,9 +1482,9 @@
     let btn;
     if (S.plusGift) btn = '<div class="plus-left">🎁 У тебя подарочный Плюс навсегда</div>';
     else if (PAY().hasPending()) btn = '<button class="btn big blue" data-act="plus-check">⏳ Проверить оплату</button>';
-    else if (PAY().on()) btn = `<button class="btn big gold" data-act="plus-buy">${isPlus() ? 'Продлить' : 'Подключить'} за ${P.price} ₽ на ${P.days} дней</button>`;
+    else if (PAY().on()) btn = payConsentBox() + `<button class="btn big ${S.payConsent ? 'gold' : 'gray'}" data-pay-btn="1" data-act="plus-buy" ${S.payConsent ? '' : 'disabled'}>${isPlus() ? 'Продлить' : 'Подключить'} за ${P.price} ₽ на ${P.days} дней</button>`;
     else if (payLink()) {
-      btn = `<button class="btn big gold" data-act="plus-link">Купить за ${P.price} ₽</button>
+      btn = payConsentBox() + `<button class="btn big ${S.payConsent ? 'gold' : 'gray'}" data-pay-btn="1" data-act="plus-link" ${S.payConsent ? '' : 'disabled'}>Купить за ${P.price} ₽</button>
         <ol class="plus-steps"><li>Оплати по ссылке.</li><li>Код придёт на почту, указанную при оплате, в течение 24 часов.</li><li>Введи код здесь.</li></ol>
         <button class="btn big ghost" data-act="promo">У меня есть код</button>`;
       if (S.payLinkAt) btn += `<div class="plus-wait">Оплатил? Код придёт на почту до 24 часов. Не пришёл? <a href="docs/contacts.html" target="_blank" rel="noopener">Напиши нам</a></div>`;
@@ -2071,6 +2072,7 @@
     'consent-ok': () => { if (!consentOk()) return; acceptConsent(); save(); render(); },
     // ----- Плюс и оплата -----
     'plus-buy': async el => {
+      if (!S.payConsent && !isDev()) return;
       T('plus_buy_click', { renew: isPlus(), online: PAY().on() });
       if (!PAY().on()) {
         if (isDev() && await confirmBox('Тестовая покупка: деньги не списываются. Подключить Плюс на 30 дней?', 'Подключить')) {
@@ -2084,7 +2086,7 @@
       catch (e) { toast('Не получилось начать оплату. Проверь интернет и попробуй ещё раз'); render(); }
     },
     'plus-link': () => {
-      const u = payLink(); if (!u) return;
+      const u = payLink(); if (!u || !S.payConsent) return;
       S.payLinkAt = Date.now(); save();
       T('plus_buy_click', { renew: isPlus(), online: false, link: true });
       if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) window.open(u, '_system');
@@ -2218,6 +2220,12 @@
   });
   document.addEventListener('input', e => { if (e.target.id === 'ans' && L && L.state === 'answer') refreshFoot(); });
   document.addEventListener('change', e => {
+    if (e.target.id === 'payConsent') {
+      S.payConsent = e.target.checked ? Date.now() : 0; save();
+      const b = $('[data-pay-btn]');
+      if (b) { b.disabled = !S.payConsent; b.classList.toggle('gold', !!S.payConsent); b.classList.toggle('gray', !S.payConsent); }
+      return;
+    }
     if (!e.target.classList.contains('consent-cb')) return;
     const b = $('[data-consent-btn]');
     if (b) b.disabled = !consentOk();

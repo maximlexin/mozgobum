@@ -28,7 +28,7 @@
     seen: {},                                             // недавно показанные фиксированные вопросы (для разнообразия)
     theoryMode: 'short',                                  // какую теорию открывать: short | full
     snow: null,                                           // снегопад: null — сам (с 1 декабря по 15 января), true/false — выбор игрока
-    plusUntil: 0, plusWeek: '', plusGift: false, noAds: false, usedCodes: [], log: {}, invited: 0, backupHint: false, exported: false,          // «Мозгобум Плюс»: до когда, неделя бесплатной заморозки, подарок по промокоду
+    plusUntil: 0, plusWeek: '', plusGift: false, noAds: false, usedCodes: [], payLinkAt: 0, log: {}, invited: 0, backupHint: false, exported: false,          // «Мозгобум Плюс»: до когда, неделя бесплатной заморозки, подарок по промокоду
     consent: null,                                        // принятые документы: {v, at}
   });
 
@@ -134,6 +134,12 @@
   }
   // платёжный бэкенд: свой сервер (MB.pay, ЮKassa) или облако; пока ни один не настроен, оплата выключена
   const PAY = () => (MB.pay && MB.pay.on() ? MB.pay : MB.cloud);
+  // ссылка многоразового счёта ЮKassa (путь без сервера); на localhost для проверки можно задать в localStorage: mozgobum-paylink
+  const payLink = () => {
+    let u = String((MB.CONFIG && MB.CONFIG.payLink) || '');
+    if (!u && ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) { try { u = localStorage.getItem('mozgobum-paylink') || ''; } catch (e) { /* нет хранилища */ } }
+    return /^https?:\/\//.test(u) ? u : '';
+  };
   // спрашиваем сервер, прошла ли оплата (после возврата со страницы оплаты или из браузера в приложение)
   async function checkPayment(manual) {
     const r = await PAY().checkPending();
@@ -1476,6 +1482,12 @@
     if (S.plusGift) btn = '<div class="plus-left">🎁 У тебя подарочный Плюс навсегда</div>';
     else if (PAY().hasPending()) btn = '<button class="btn big blue" data-act="plus-check">⏳ Проверить оплату</button>';
     else if (PAY().on()) btn = `<button class="btn big gold" data-act="plus-buy">${isPlus() ? 'Продлить' : 'Подключить'} за ${P.price} ₽ на ${P.days} дней</button>`;
+    else if (payLink()) {
+      btn = `<button class="btn big gold" data-act="plus-link">Купить за ${P.price} ₽</button>
+        <ol class="plus-steps"><li>Оплати по ссылке.</li><li>Код придёт на почту, указанную при оплате, в течение 24 часов.</li><li>Введи код здесь.</li></ol>
+        <button class="btn big ghost" data-act="promo">У меня есть код</button>`;
+      if (S.payLinkAt) btn += `<div class="plus-wait">Оплатил? Код придёт на почту до 24 часов. Не пришёл? <a href="docs/contacts.html" target="_blank" rel="noopener">Напиши нам</a></div>`;
+    }
     else if (isDev()) btn = '<button class="btn big gold" data-act="plus-buy">🧪 Тестовая покупка (DEV)</button>';
     else btn = `<button class="btn big gray" disabled>${P.price} ₽ на ${P.days} дней · оплата скоро откроется</button>`;
     return `<div class="card plus-card ${isPlus() ? 'active' : ''}">
@@ -2070,6 +2082,14 @@
       el.textContent = 'Открываем оплату…';
       try { await PAY().buy(MB.CONFIG.plus.sku); }
       catch (e) { toast('Не получилось начать оплату. Проверь интернет и попробуй ещё раз'); render(); }
+    },
+    'plus-link': () => {
+      const u = payLink(); if (!u) return;
+      S.payLinkAt = Date.now(); save();
+      T('plus_buy_click', { renew: isPlus(), online: false, link: true });
+      if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) window.open(u, '_system');
+      else window.open(u, '_blank', 'noopener');
+      render();
     },
     'plus-check': () => checkPayment(true),
     // ----- статистика разработчика -----

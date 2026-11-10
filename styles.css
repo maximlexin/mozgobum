@@ -648,6 +648,8 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; -webkit-user
 .plus-logo { font-size: var(--fs-xl); font-weight: 900; color: #7c4dff; }
 .plus-left { font-size: var(--fs-sm); font-weight: 900; color: var(--gold-d); background: color-mix(in srgb, var(--gold) 20%, transparent); padding: 3px 10px; border-radius: var(--r-pill); }
 .plus-perks { margin: 0; padding-left: 4px; list-style: none; display: grid; gap: 6px; font-size: var(--fs-md); }
+.plus-steps { margin: 4px 0; padding-left: 22px; display: grid; gap: 4px; font-size: var(--fs-md); }
+.plus-wait { background: rgba(255, 200, 0, .15); border-radius: 12px; padding: 10px 12px; font-size: var(--fs-md); }
 .plus-card small a { color: var(--blue); }
 .plus-badge { color: #7c4dff; }
 .invite-card { padding: 16px 18px; margin-top: 14px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }

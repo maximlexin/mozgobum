@@ -28,7 +28,7 @@
     seen: {},                                             // недавно показанные фиксированные вопросы (для разнообразия)
     theoryMode: 'short',                                  // какую теорию открывать: short | full
     snow: null,                                           // снегопад: null — сам (с 1 декабря по 15 января), true/false — выбор игрока
-    plusUntil: 0, plusWeek: '', plusGift: false, noAds: false, usedCodes: [], payLinkAt: 0, payConsent: 0, log: {}, invited: 0, backupHint: false, exported: false,          // «Мозгобум Плюс»: до когда, неделя бесплатной заморозки, подарок по промокоду
+    plusUntil: 0, plusWeek: '', plusGift: false, noAds: false, usedCodes: [], plusCodes: [], payLinkAt: 0, payConsent: 0, log: {}, invited: 0, backupHint: false, exported: false,          // «Мозгобум Плюс»: до когда, неделя бесплатной заморозки, подарок по промокоду
     consent: null,                                        // принятые документы: {v, at}
   });
 
@@ -2501,6 +2501,7 @@
     if (MB.CONFIG.plusCodesUntil && Date.now() > Date.parse(MB.CONFIG.plusCodesUntil + 'T23:59:59')) { toast('Срок действия кода закончился'); return; }
     if ((S.usedCodes || []).includes(hex)) { toast('Этот код уже активирован на этом устройстве'); return; }
     S.usedCodes = (S.usedCodes || []).concat(hex);
+    S.plusCodes = (Array.isArray(S.plusCodes) ? S.plusCodes : []).concat({ h: hex, days: plusDays, at: Date.now() });
     activatePlus(Math.max(Date.now(), S.plusUntil || 0) + plusDays * DAY, false);
     T('promo_redeemed', { kind: 'plus_code' });
     render();
@@ -2546,6 +2547,23 @@
   render();
   }
 
+  // Отзыв «Плюса» по коду: если хэш купленного кода попал в plusRevoked, вычитаем его дни (один раз)
+  function applyRevocations() {
+    const rev = MB.CONFIG.plusRevoked || [];
+    if (!rev.length || !Array.isArray(S.plusCodes)) return false;
+    let hit = false;
+    S.plusCodes.forEach(c => {
+      if (!c || c.revoked || !rev.includes(c.h)) return;
+      if (!S.plusGift) {
+        let u = (S.plusUntil || 0) - (Number(c.days) || 0) * DAY;
+        S.plusUntil = u < Date.now() ? 0 : u;
+      }
+      c.revoked = true; hit = true;
+    });
+    if (hit) save();
+    return hit;
+  }
+
   // Код из ссылки ?code=: читаем один раз, сразу убираем из адреса, в хранилище не кладём
   let linkCode = '';
   try {
@@ -2571,8 +2589,10 @@
   save();
   // просим браузер не стирать данные игры при нехватке места (где поддерживается)
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* не критично */ }
+  const revokedNow = applyRevocations();
   plusPerks();
   render();
+  if (revokedNow) setTimeout(() => toast('Этот код отозван, «Плюс» выключен'), 600);
   if (brokenSaved) setTimeout(() => toast('Сохранение было повреждено. Копия сохранена отдельно, начинаем заново'), 800);
   T('app_open', { onboarded: S.onboarded, plus: isPlus(), lessons: S.lessons, streak: S.streak, src: MB.cloud.src() || '' });
   // облако работает только после согласия с документами
